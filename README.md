@@ -24,8 +24,4 @@ A Python-based project for job analysis and embeddings.
 - Python 3.x
 - numpy
 - pandas
-- [Other dependencies as needed]
 
-## License
-
-[Add your license information here]
