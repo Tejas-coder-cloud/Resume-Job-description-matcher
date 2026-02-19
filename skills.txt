@@ -1,0 +1,11 @@
+python
+machine learning
+deep learning
+data analysis
+cloud computing
+natural language processing
+computer vision
+sql
+java
+docker
+aws
