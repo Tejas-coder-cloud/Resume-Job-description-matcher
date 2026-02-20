@@ -1,9 +1,6 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
-import os
-
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -16,7 +13,7 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# Optimized Resource Loading (Reduces Latency)
+# Optimized Resource Loading
 # --------------------------------------------------
 @st.cache_resource
 def load_all_resources():
@@ -31,14 +28,13 @@ def load_all_resources():
     with open("skills.txt", "r", encoding="utf-8") as f:
         skills = [s.strip().lower() for s in f if s.strip()]
         
-    # Load KB and pre-calculate embeddings to stop lag in AI section
+    # Load KB and pre-calculate embeddings for AI section
     with open("knowledge_base.txt", "r", encoding="utf-8") as f:
         paragraphs = [p.strip() for p in f.read().split("\n\n") if p.strip()]
     kb_embs = model.encode(paragraphs)
     
     return model, df, job_embs, skills, paragraphs, kb_embs
 
-# Global Access to pre-loaded data
 model, df, job_embeddings, skills_list, kb_paragraphs, kb_embeddings = load_all_resources()
 
 # --------------------------------------------------
@@ -51,23 +47,25 @@ def set_section(name):
     st.session_state.section = name
 
 bg_configs = {
-    "Home": {"gradient": "linear-gradient(-45deg, #020617, #0f172a, #1e293b, #020617)", "accent": "#00f5ff"},
+    "Home": {"gradient": "linear-gradient(-45deg, #020617, #0f172a, #422006, #020617)", "accent": "#facc15"},
     "About": {"gradient": "linear-gradient(-45deg, #020617, #1e1b4b, #312e81, #020617)", "accent": "#c084fc"},
     "AI": {"gradient": "linear-gradient(-45deg, #020617, #064e3b, #022c22, #020617)", "accent": "#4ade80"}
 }
 conf = bg_configs.get(st.session_state.section, bg_configs["Home"])
 
 with st.sidebar:
-    st.markdown("## ☰ Menu")
-    st.button("🏠 Home", on_click=set_section, args=("Home",), use_container_width=True, 
-              type="primary" if st.session_state.section == "Home" else "secondary")
-    st.button("ℹ️ About", on_click=set_section, args=("About",), use_container_width=True,
-              type="primary" if st.session_state.section == "About" else "secondary")
-    st.button("🤖 AI Assistant", on_click=set_section, args=("AI",), use_container_width=True,
-              type="primary" if st.session_state.section == "AI" else "secondary")
+    st.markdown("<h2 style='text-align: center; color: white;'>☰ Menu</h2>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 8, 1])
+    with col2:
+        st.button("🏠 Home", on_click=set_section, args=("Home",), use_container_width=True, 
+                  type="primary" if st.session_state.section == "Home" else "secondary")
+        st.button("ℹ️ About", on_click=set_section, args=("About",), use_container_width=True,
+                  type="primary" if st.session_state.section == "About" else "secondary")
+        st.button("🤖 AI Assistant", on_click=set_section, args=("AI",), use_container_width=True,
+                  type="primary" if st.session_state.section == "AI" else "secondary")
 
 # --------------------------------------------------
-# Dynamic CSS (Background & Hover)
+# Dynamic CSS (Menu & Layout)
 # --------------------------------------------------
 st.markdown(f"""
 <style>
@@ -82,32 +80,28 @@ st.markdown(f"""
     50% {{ background-position: 100% 50%; }}
     100% {{ background-position: 0% 50%; }}
 }}
-
-/* Dynamic Sidebar Backgrounds */
+div[data-testid="stSidebar"] button {{
+    width: 85% !important;
+    height: 45px !important;
+    border-radius: 10px !important;
+    transition: all 0.4s ease !important;
+}}
 div[data-testid="stSidebar"] button[kind="primary"] {{
     background-color: {conf['accent']} !important;
     color: #020617 !important;
-    box-shadow: 0 0 20px {conf['accent']};
-    border: none !important;
+    font-weight: bold !important;
+    box-shadow: 0 0 20px {conf['accent']}88 !important;
 }}
-
-/* Text Hover Background Effect */
-h1, h2, h3, p, span {{
-    transition: 0.3s;
-    border-radius: 5px;
+div[data-testid="stSidebar"] button:hover {{
+    border-color: {conf['accent']} !important;
+    transform: translateY(-3px) !important;
 }}
-h1:hover, h2:hover, h3:hover, p:hover {{
-    background: rgba(255, 255, 255, 0.05);
-    color: {conf['accent']} !important;
-}}
-
 [data-testid="stVerticalBlockBorderWrapper"] {{
-    background: rgba(15, 23, 42, 0.75) !important;
-    backdrop-filter: blur(10px);
-    border: 1px solid {conf['accent']}55 !important;
+    background: rgba(15, 23, 42, 0.8) !important;
+    backdrop-filter: blur(15px);
+    border: 1px solid {conf['accent']}33 !important;
     border-radius: 20px !important;
 }}
-
 .skill-chip {{
     display: inline-block;
     padding: 4px 12px;
@@ -118,13 +112,6 @@ h1:hover, h2:hover, h3:hover, p:hover {{
 }}
 </style>
 """, unsafe_allow_html=True)
-
-# --------------------------------------------------
-# Helper Functions
-# --------------------------------------------------
-def extract_skills(text):
-    text = text.lower()
-    return {s for s in skills_list if s in text}
 
 # --------------------------------------------------
 # Main UI
@@ -138,39 +125,40 @@ if st.session_state.section == "Home":
         
         if st.button("🚀 Analyze Matching & Skills", use_container_width=True):
             if resume_text.strip():
-                # 1. Matching Logic
+                # 1. Local Matching Logic
                 r_emb = model.encode(resume_text)
                 sims = cosine_similarity([r_emb], job_embeddings)[0]
                 df["match_percentage"] = (sims * 100).round(2)
+                user_skills = {s for s in skills_list if s in resume_text.lower()}
                 
-                # 2. Skill Extraction
-                user_skills = extract_skills(resume_text)
+                st.write("### 📂 Database Matches")
+                min_threshold = 35.0 
+                results_found = False
                 
-                st.write("### Career Match Results")
-                for _, row in df.sort_values("match_percentage", ascending=False).head(3).iterrows():
-                    with st.expander(f"{row['Job Title']} — {row['match_percentage']}% Match"):
-                        job_skills = extract_skills(row['clean_description'])
-                        
-                        # Display Missing Skills (The fix)
-                        missing = job_skills - user_skills
-                        matched = job_skills & user_skills
-                        
-                        st.write("**Matched Skills:**")
-                        if matched:
+                sorted_df = df.sort_values("match_percentage", ascending=False)
+                for _, row in sorted_df.head(5).iterrows():
+                    job_skills = {s for s in skills_list if s in str(row['clean_description']).lower()}
+                    matched = job_skills & user_skills
+                    
+                    # Validation: Require minimum score AND at least one matching skill
+                    if row['match_percentage'] >= min_threshold and len(matched) > 0:
+                        results_found = True
+                        with st.expander(f"{row['Job Title']} — {row['match_percentage']}% Match"):
+                            missing = job_skills - user_skills
+                            st.write("**Matched Skills:**")
                             for s in matched:
                                 st.markdown(f'<span class="skill-chip" style="color:{conf["accent"]}; border-color:{conf["accent"]};">{s}</span>', unsafe_allow_html=True)
-                        else: st.write("None detected.")
-
-                        st.write("**Missing Skills (Unmatched):**")
-                        if missing:
-                            for s in missing:
-                                st.markdown(f'<span class="skill-chip" style="color:#ff4b4b; border-color:#ff4b4b;">{s}</span>', unsafe_allow_html=True)
-                        else: st.write("No missing skills! You're a great fit.")
+                            st.write("**Missing Skills:**")
+                            if missing:
+                                for s in missing:
+                                    st.markdown(f'<span class="skill-chip" style="color:#ff4b4b; border-color:#ff4b4b;">{s}</span>', unsafe_allow_html=True)
+                
+                if not results_found:
+                    st.warning("❌ No matching local jobs found with your specific skills.")
             else:
                 st.warning("Please enter text to analyze.")
 
 elif st.session_state.section == "About":
-    
     with st.container(border=True):
         st.write("### ⚙️ Technology Overview")
         with st.expander("🔹 Transformer: all-MiniLM-L6-v2"):
@@ -183,8 +171,16 @@ elif st.session_state.section == "About":
 elif st.session_state.section == "AI":
     with st.container(border=True):
         st.write("### 🤖 AI Assistant")
-        query = st.text_input("Ask a question about the project...", placeholder="How does semantic matching work?")
-        if query:
-            q_emb = model.encode(query)
-            sims = cosine_similarity([q_emb], kb_embeddings)[0]
-            st.info(f"**Answer:** {kb_paragraphs[sims.argmax()]}")
+        # Form allows "Enter" to submit and includes validation for empty fields
+        with st.form("ai_query_form", clear_on_submit=False):
+            query = st.text_input("Ask a question about the project...", placeholder="How does semantic matching work?")
+            submit_button = st.form_submit_button("Ask", use_container_width=True)
+        
+        if submit_button:
+            if query.strip():
+                # Direct similarity search in local knowledge base
+                q_emb = model.encode(query)
+                sims = cosine_similarity([q_emb], kb_embeddings)[0]
+                st.info(f"**Answer:** {kb_paragraphs[sims.argmax()]}")
+            else:
+                st.warning("⚠️ Please include some text before submitting.")
