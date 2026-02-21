@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -13,32 +14,37 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# Optimized Resource Loading
+# Optimized Resource Loading (With Authentication Fix)
 # --------------------------------------------------
 @st.cache_resource
 def load_all_resources():
-    # Load Model
-    model = SentenceTransformer("all-MiniLM-L6-v2")
+    # 1. Retrieve the token from Streamlit Secrets to prevent throttling
+    # Ensure you've added 'HF_TOKEN' to your Streamlit dashboard secrets!
+    hf_token = st.secrets.get("HF_TOKEN")
     
-    # Load Data
+    # 2. Load Model with Token
+    model = SentenceTransformer("all-MiniLM-L6-v2", token=hf_token)
+    
+    # 3. Load Data
     df = pd.read_csv("jobs_processed.csv")
     job_embs = np.load("job_embeddings.npy")
     
-    # Load Skills
+    # 4. Load Skills
     with open("skills.txt", "r", encoding="utf-8") as f:
         skills = [s.strip().lower() for s in f if s.strip()]
         
-    # Load KB and pre-calculate embeddings for AI section
+    # 5. Load KB and pre-calculate embeddings for AI section
     with open("knowledge_base.txt", "r", encoding="utf-8") as f:
         paragraphs = [p.strip() for p in f.read().split("\n\n") if p.strip()]
     kb_embs = model.encode(paragraphs)
     
     return model, df, job_embs, skills, paragraphs, kb_embs
 
+# Initialize resources
 model, df, job_embeddings, skills_list, kb_paragraphs, kb_embeddings = load_all_resources()
 
 # --------------------------------------------------
-# Sidebar Navigation
+# Sidebar Navigation & State Management
 # --------------------------------------------------
 if "section" not in st.session_state:
     st.session_state.section = "Home"
@@ -46,6 +52,7 @@ if "section" not in st.session_state:
 def set_section(name):
     st.session_state.section = name
 
+# Dynamic Theme Configurations
 bg_configs = {
     "Home": {"gradient": "linear-gradient(-45deg, #020617, #0f172a, #422006, #020617)", "accent": "#facc15"},
     "About": {"gradient": "linear-gradient(-45deg, #020617, #1e1b4b, #312e81, #020617)", "accent": "#c084fc"},
@@ -65,7 +72,7 @@ with st.sidebar:
                   type="primary" if st.session_state.section == "AI" else "secondary")
 
 # --------------------------------------------------
-# Dynamic CSS (Menu & Layout)
+# Dynamic CSS (Menu, Layout & Background)
 # --------------------------------------------------
 st.markdown(f"""
 <style>
@@ -114,10 +121,13 @@ div[data-testid="stSidebar"] button:hover {{
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------
-# Main UI
+# Main UI Header
 # --------------------------------------------------
 st.markdown(f'<div style="font-size:42px; font-weight:800; text-align:center; color:{conf["accent"]}; text-shadow: 0 0 15px {conf["accent"]}; margin-bottom:20px;">Resume–JD Matching System</div>', unsafe_allow_html=True)
 
+# --------------------------------------------------
+# Section: HOME
+# --------------------------------------------------
 if st.session_state.section == "Home":
     with st.container(border=True):
         st.write("### 📝 Paste your resume content")
@@ -125,7 +135,7 @@ if st.session_state.section == "Home":
         
         if st.button("🚀 Analyze Matching & Skills", use_container_width=True):
             if resume_text.strip():
-                # 1. Local Matching Logic
+                # Matching Logic
                 r_emb = model.encode(resume_text)
                 sims = cosine_similarity([r_emb], job_embeddings)[0]
                 df["match_percentage"] = (sims * 100).round(2)
@@ -140,7 +150,7 @@ if st.session_state.section == "Home":
                     job_skills = {s for s in skills_list if s in str(row['clean_description']).lower()}
                     matched = job_skills & user_skills
                     
-                    # Validation: Require minimum score AND at least one matching skill
+                    # Require minimum score and at least one matching skill
                     if row['match_percentage'] >= min_threshold and len(matched) > 0:
                         results_found = True
                         with st.expander(f"{row['Job Title']} — {row['match_percentage']}% Match"):
@@ -148,16 +158,22 @@ if st.session_state.section == "Home":
                             st.write("**Matched Skills:**")
                             for s in matched:
                                 st.markdown(f'<span class="skill-chip" style="color:{conf["accent"]}; border-color:{conf["accent"]};">{s}</span>', unsafe_allow_html=True)
+                            
                             st.write("**Missing Skills:**")
                             if missing:
                                 for s in missing:
                                     st.markdown(f'<span class="skill-chip" style="color:#ff4b4b; border-color:#ff4b4b;">{s}</span>', unsafe_allow_html=True)
+                            else:
+                                st.write("No missing technical skills identified.")
                 
                 if not results_found:
                     st.warning("❌ No matching local jobs found with your specific skills.")
             else:
                 st.warning("Please enter text to analyze.")
 
+# --------------------------------------------------
+# Section: ABOUT
+# --------------------------------------------------
 elif st.session_state.section == "About":
     with st.container(border=True):
         st.write("### ⚙️ Technology Overview")
@@ -168,17 +184,18 @@ elif st.session_state.section == "About":
         with st.expander("🔹 Skill Gap Analysis"):
             st.write("- Compares a predefined dictionary of tech skills against your text to identify missing competencies.")
 
+# --------------------------------------------------
+# Section: AI ASSISTANT
+# --------------------------------------------------
 elif st.session_state.section == "AI":
     with st.container(border=True):
         st.write("### 🤖 AI Assistant")
-        # Form allows "Enter" to submit and includes validation for empty fields
         with st.form("ai_query_form", clear_on_submit=False):
             query = st.text_input("Ask a question about the project...", placeholder="How does semantic matching work?")
             submit_button = st.form_submit_button("Ask", use_container_width=True)
         
         if submit_button:
             if query.strip():
-                # Direct similarity search in local knowledge base
                 q_emb = model.encode(query)
                 sims = cosine_similarity([q_emb], kb_embeddings)[0]
                 st.info(f"**Answer:** {kb_paragraphs[sims.argmax()]}")
