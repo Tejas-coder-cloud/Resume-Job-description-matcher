@@ -1,0 +1,49 @@
+Resume and job description matching is an AI-based approach that evaluates how well a candidate’s resume aligns with a given job role. Instead of relying on exact keywords, the system focuses on understanding the meaning and intent of the text to provide a match percentage and skill gap analysis.
+
+Traditional Applicant Tracking Systems often reject resumes due to missing keywords, even when candidates possess relevant skills. This limitation motivates the need for semantic matching techniques that consider context rather than surface-level word overlap.
+
+Natural Language Processing is a field of artificial intelligence that enables machines to understand, analyze, and generate human language. NLP techniques are widely used in applications such as chatbots, search engines, translation systems, and resume parsing.
+
+Resumes and job descriptions are written in unstructured natural language, making NLP essential for extracting meaningful information. NLP allows systems to process text, identify skills, and compare documents intelligently.
+
+Keyword-based matching systems fail when synonyms or paraphrased terms are used. For example, phrases such as data analysis and data analytics may convey the same meaning but are treated as different keywords, leading to inaccurate results.
+
+Semantic matching compares text based on meaning rather than exact word usage. It ensures that documents conveying similar ideas are recognized as related even when different vocabulary is used.
+
+Transformers are deep learning architectures designed to process sequential data using self-attention mechanisms. They analyze entire sentences at once, allowing them to capture long-range dependencies and contextual relationships.
+
+Self-attention allows each word in a sentence to consider other words while forming its representation. This enables the model to understand context and resolve ambiguity in language.
+
+Contextual understanding means that the meaning of a word changes depending on its surrounding words. Transformers generate contextual embeddings that adapt word representations based on sentence context.
+
+Sentence-BERT is a transformer-based model designed to generate sentence-level embeddings. These embeddings capture semantic meaning and can be efficiently compared using similarity measures.
+
+Sentence-BERT is used in this project to convert resumes and job descriptions into numerical vectors. These vectors allow semantic comparison and ranking of job descriptions based on relevance.
+
+Embeddings are numerical representations of text that capture semantic relationships. Texts with similar meanings produce embeddings that are close to each other in vector space.
+
+Vector space models represent text as points in high-dimensional space. The similarity between two texts is determined by the distance or angle between their vectors.
+
+Cosine similarity measures how similar two vectors are based on the angle between them. It is commonly used in NLP because it focuses on direction rather than magnitude.
+
+Match percentage is computed by scaling the cosine similarity score between resume and job description embeddings. This provides an interpretable measure of alignment between the two documents.
+
+Skill gap analysis identifies skills present in the job description but missing from the resume. This feature provides actionable feedback to users to improve their job readiness.
+
+Explainable AI focuses on making model decisions understandable to users. In this project, explainability is achieved through match percentages and explicit skill gap feedback.
+
+Sentence embeddings are often high-dimensional vectors that capture rich semantic information. While high dimensionality improves representation quality, it increases computational cost.
+
+Principal Component Analysis is a dimensionality reduction technique that projects high-dimensional data onto directions of maximum variance while preserving essential information.
+
+PCA is considered lightweight because it does not require iterative training like neural networks. Once computed, it allows fast projection of data into lower dimensions.
+
+In large-scale NLP systems, PCA helps reduce memory usage and speed up similarity computations while maintaining comparable performance.
+
+The AI assistant in this project uses semantic retrieval rather than predefined question-answer pairs. User queries are matched with explanatory paragraphs based on meaning.
+
+Semantic retrieval allows a single paragraph to answer multiple related questions. This approach is scalable and avoids manual rule creation.
+
+Overall, the project demonstrates how transformer-based semantic understanding can improve resume-job matching by providing accurate matching, skill gap analysis, and explainable results.
+
+This project is an AI-based Resume–Job Description matching system that uses transformer-based semantic embeddings to compare resumes with job descriptions. It computes a match percentage, identifies missing skills, and provides explainable feedback to help candidates improve their job alignment. The system also includes a semantic AI assistant that answers conceptual questions related to the project, NLP, transformers, and resume matching.
