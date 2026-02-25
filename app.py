@@ -229,21 +229,22 @@ else:
         ]
         for t, d in cards:
             st.markdown(f'<div class="info-card"><h3>{t}</h3><p>{d}</p></div>', unsafe_allow_html=True)
-
     elif menu == "AI Assistant":
         apply_style("#a855f7")
         st.subheader("🤖 Career Coach")
         q = st.text_input("Ask anything:")
         if q:
             try:
-                # REFINED CONFIG: Use the full model path to avoid 404 version errors
+                import google.generativeai as genai
                 genai.configure(api_key=st.secrets["AI_API_KEY"])
-                ai = genai.GenerativeModel(model_name='gemini-1.5-flash')
+                model = genai.GenerativeModel(
+                model_name="models/gemini-1.5-pro"
+            )
                 with st.spinner("Analyzing..."):
-                    st.chat_message("assistant").write(ai.generate_content(q).text)
+                    response = model.generate_content(q)
+                    st.chat_message("assistant").write(response.text)
             except Exception as e:
-                st.error(f"Gemini API Error: {e}")
-
+                st.error(f"AI Assistant Error: {e}")        
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.rerun()
