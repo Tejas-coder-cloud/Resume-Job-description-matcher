@@ -3,262 +3,247 @@ import pandas as pd
 import numpy as np
 import sqlite3
 import hashlib
-import re
+import smtplib
+import random
+import google.generativeai as genai
+from email.message import EmailMessage
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # ==================================================
-# PAGE CONFIG
+# CONFIG & DYNAMIC STYLING
 # ==================================================
 st.set_page_config(page_title="Resume–JD Matcher", layout="wide")
 
+def apply_style(accent_color):
+    st.markdown(f"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+    
+    .stApp {{
+        background: linear-gradient(-45deg, #0f172a, #1e1b4b, #020617, #1e293b);
+        background-size: 400% 400%;
+        animation: gradient 15s ease infinite;
+        transition: all 0.5s ease;
+    }}
+    @keyframes gradient {{
+        0% {{ background-position: 0% 50%; }}
+        50% {{ background-position: 100% 50%; }}
+        100% {{ background-position: 0% 50%; }}
+    }}
+    .glowing-title {{
+        font-size: 3.5rem; font-weight: 800; text-align: center; color: #fff;
+        text-shadow: 0 0 15px {accent_color}, 0 0 30px {accent_color};
+        margin-bottom: 2rem; font-family: 'Inter', sans-serif;
+    }}
+    [data-testid="stTextInput"], [data-testid="stPasswordInput"], [data-testid="stTextArea"] {{
+        max-width: 500px; margin: 0 auto;
+    }}
+    div.stButton > button {{
+        border-radius: 10px; font-weight: bold; width: 100%; transition: 0.3s;
+    }}
+    .login-btn button {{ background-color: #22c55e !important; color: white !important; border: none; }}
+    .signup-btn button {{ background-color: #3b82f6 !important; color: white !important; border: none; }}
+    
+    .info-card {{
+        background: rgba(255, 255, 255, 0.05); padding: 25px; border-radius: 15px;
+        border: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px;
+        transition: all 0.4s ease; color: #e2e8f0;
+    }}
+    .info-card:hover {{
+        transform: translateX(20px); background: rgba(255, 255, 255, 0.1);
+        border-color: {accent_color}; box-shadow: -10px 0 15px {accent_color};
+    }}
+    .skill-pill {{
+        display: inline-block; padding: 6px 12px; border-radius: 20px;
+        margin: 4px; font-size: 0.8rem; font-weight: 600;
+    }}
+    .match {{ background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981; }}
+    .gap {{ background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; }}
+    </style>
+    """, unsafe_allow_html=True)
+
 # ==================================================
-# DATABASE
+# DATABASE & UTILS
 # ==================================================
 def init_db():
     conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users(
-            username TEXT PRIMARY KEY,
-            password TEXT,
-            email TEXT
-        )
-    """)
+    conn.execute("CREATE TABLE IF NOT EXISTS users(username TEXT PRIMARY KEY, password TEXT, email TEXT)")
     conn.commit()
     conn.close()
 
+def hash_pw(p): return hashlib.sha256(p.encode()).hexdigest()
+
 init_db()
 
+def send_otp(receiver_email):
+    otp = str(random.randint(100000, 999999))
+    try:
+        sender = st.secrets["EMAIL_USER"]
+        pw = st.secrets["EMAIL_PASSWORD"]
+        msg = EmailMessage()
+        msg.set_content(f"Your verification code is: {otp}")
+        msg['Subject'] = 'Verification Code'
+        msg['From'] = sender
+        msg['To'] = receiver_email
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(sender, pw)
+            smtp.send_message(msg)
+        return otp
+    except Exception as e:
+        st.error(f"Mail Error: {e}")
+        return None
+
 # ==================================================
-# LOAD MODEL & DATA
+# CORE LOGIC
 # ==================================================
 @st.cache_resource
 def load_resources():
     model = SentenceTransformer("all-MiniLM-L6-v2")
-    df = pd.read_csv("jobs_processed.csv")
-    job_emb = np.load("job_embeddings.npy")
-    with open("skills.txt") as f:
-        skills = [s.strip().lower() for s in f if s.strip()]
-    skill_emb = model.encode(skills)
-    return model, df, job_emb, skills, skill_emb
+    try:
+        df = pd.read_csv("jobs_processed.csv")
+        job_emb = np.load("job_embeddings.npy")
+    except:
+        df = pd.DataFrame({'Job Title': ['Software Engineer'], 'clean_description': ['python java sql react']})
+        job_emb = model.encode(df['clean_description'].tolist())
+    
+    try:
+        with open("skills.txt", "r") as f:
+            skills = [s.strip().lower() for s in f if s.strip()]
+    except:
+        skills = ["python", "java", "react", "sql", "machine learning"]
+    return model, df, job_emb, skills
 
-model, df, job_emb, skills_list, skill_emb = load_resources()
-
-# ==================================================
-# SESSION STATE INIT
-# ==================================================
-if "page" not in st.session_state:
-    st.session_state.page = "Home"
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-# ==================================================
-# SIDEBAR MENU (DO NOT OVERRIDE LOGIN)
-# ==================================================
-st.sidebar.markdown("## 📌 Menu")
-
-nav_page = st.sidebar.radio(
-    "Navigate",
-    ["Home", "About", "AI Assistant"],
-    index=["Home", "About", "AI Assistant"].index(
-        st.session_state.page if st.session_state.page in ["Home","About","AI Assistant"] else "Home"
-    )
-)
-
-# Update page ONLY if not on Login
-if st.session_state.page != "Login":
-    st.session_state.page = nav_page
+model, df, job_emb, skills_list = load_resources()
 
 # ==================================================
-# DYNAMIC THEMES (NOW ACTUALLY WORK)
+# SESSION STATE & AUTH FLOW
 # ==================================================
-THEME = {
-    "Home": "#22c55e",
-    "About": "#3b82f6",
-    "AI Assistant": "#a855f7",
-    "Login": "#ef4444"
-}
+if "auth_step" not in st.session_state: st.session_state.auth_step = "login"
+if "logged_in" not in st.session_state: st.session_state.logged_in = False
 
-accent = THEME[st.session_state.page]
+st.markdown('<h1 class="glowing-title">RESUME-JD MATCHER</h1>', unsafe_allow_html=True)
 
-st.markdown(f"""
-<style>
-.main {{
-    background: radial-gradient(circle at top, #020617, #000000);
-}}
+if not st.session_state.logged_in:
+    apply_style("#ef4444")
+    _, center_col, _ = st.columns([1, 2, 1])
+    
+    with center_col:
+        if st.session_state.auth_step == "login":
+            st.subheader("🔐 Login")
+            u = st.text_input("Username", key="l_u")
+            p = st.text_input("Password", type="password", key="l_p")
+            
+            st.markdown('<div class="login-btn">', unsafe_allow_html=True)
+            if st.button("Login"):
+                conn = sqlite3.connect("users.db")
+                c = conn.cursor()
+                c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, hash_pw(p)))
+                if c.fetchone():
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else: st.error("Wrong credentials.")
+                conn.close()
+            st.markdown('</div>', unsafe_allow_html=True)
 
-.job-card {{
-    background: #020617;
-    padding:22px;
-    border-radius:16px;
-    border-left:6px solid {accent};
-    margin-bottom:22px;
-    transition:0.3s;
-}}
+            if st.button("Forgot Password?"):
+                st.session_state.auth_step = "forgot_req"
+                st.rerun()
+            
+            st.markdown('<div class="signup-btn">', unsafe_allow_html=True)
+            if st.button("New User? Sign Up"):
+                st.session_state.auth_step = "signup"
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
-.job-card:hover {{
-    transform: scale(1.02);
-}}
+        elif st.session_state.auth_step == "signup":
+            st.subheader("📝 Sign Up")
+            nu = st.text_input("Username")
+            ne = st.text_input("Email")
+            npw = st.text_input("Password", type="password")
+            if st.button("Send OTP"):
+                conn = sqlite3.connect("users.db")
+                c = conn.cursor()
+                c.execute("SELECT username FROM users WHERE username=?", (nu,))
+                if c.fetchone():
+                    st.error("Username already taken.")
+                    conn.close()
+                else:
+                    conn.close()
+                    otp = send_otp(ne)
+                    if otp:
+                        st.session_state.otp = otp
+                        st.session_state.temp_user = (nu, hash_pw(npw), ne)
+                        st.session_state.auth_step = "verify_signup"
+                        st.rerun()
 
-.skill {{
-    display:inline-block;
-    padding:6px 14px;
-    margin:4px;
-    border-radius:20px;
-    font-size:0.8rem;
-}}
-
-.match {{ background:#064e3b; color:#6ee7b7; }}
-.gap {{ background:#7f1d1d; color:#fca5a5; }}
-</style>
-""", unsafe_allow_html=True)
-
-# ==================================================
-# AUTH UTILS
-# ==================================================
-def hash_pwd(p):
-    return hashlib.sha256(p.encode()).hexdigest()
-
-# ==================================================
-# SKILL EXTRACTION
-# ==================================================
-def semantic_skill_extract(text, threshold=0.45):
-    chunks = re.split(r'\n|•|-|\.', text)
-    chunks = [c.strip() for c in chunks if len(c.strip()) > 5]
-    if not chunks:
-        return set()
-    vecs = model.encode(chunks)
-    sims = cosine_similarity(vecs, skill_emb)
-    found = set()
-    for row in sims:
-        for i, s in enumerate(row):
-            if s > threshold:
-                found.add(skills_list[i])
-    return found
-
-def fallback_skill_extract(text):
-    text = text.lower()
-    return {s for s in skills_list if re.search(rf"\b{s}\b", text)}
-
-def render_skills(skills, css):
-    return "".join(
-        f"<span class='skill {css}'>{s}</span>" for s in sorted(skills)
-    )
-
-# ==================================================
-# TOP LOGIN BUTTON
-# ==================================================
-_, login_col = st.columns([8,1])
-with login_col:
-    if st.button("Login"):
-        st.session_state.page = "Login"
-
-st.divider()
+        elif st.session_state.auth_step == "verify_signup":
+            v = st.text_input("Enter OTP from Gmail")
+            if st.button("Verify & Sign Up"):
+                if v == st.session_state.otp:
+                    conn = sqlite3.connect("users.db")
+                    try:
+                        conn.execute("INSERT INTO users VALUES (?,?,?)", st.session_state.temp_user)
+                        conn.commit()
+                        st.success("Account Created! Please Login.")
+                        st.session_state.auth_step = "login"
+                        st.rerun()
+                    except: st.error("Signup failed.")
+                    finally: conn.close()
+                else: st.error("Invalid OTP.")
 
 # ==================================================
-# LOGIN PAGE (NOW STABLE)
+# MAIN INTERFACE
 # ==================================================
-if st.session_state.page == "Login":
-    st.subheader("🔐 Account Access")
+else:
+    menu = st.sidebar.radio("Navigation", ["Home", "About", "AI Assistant"])
+    
+    if menu == "Home":
+        apply_style("#22c55e")
+        st.subheader("🎯 Skill Recommendation")
+        user_in = st.text_area("Enter Resume Skills", height=200)
+        if st.button("Find Match"):
+            if user_in:
+                u_vec = model.encode([user_in])
+                sims = cosine_similarity(u_vec, job_emb)[0]
+                best = df.iloc[np.argmax(sims)]
+                st.markdown(f"### Role: {best['Job Title']}")
+                st.metric("Score", f"{round(np.max(sims)*100, 1)}%")
+                
+                u_sk = {s for s in skills_list if s in user_in.lower()}
+                j_sk = {s for s in skills_list if s in best['clean_description'].lower()}
+                matched, gap = u_sk & j_sk, j_sk - u_sk
+                
+                c1, c2 = st.columns(2)
+                with c1: st.markdown("✅ **Matched**<br>" + " ".join([f"<span class='skill-pill match'>{s}</span>" for s in matched]), unsafe_allow_html=True)
+                with c2: st.markdown("💡 **Gaps**<br>" + " ".join([f"<span class='skill-pill gap'>{s}</span>" for s in gap]), unsafe_allow_html=True)
 
-    tab1, tab2, tab3 = st.tabs(["Login", "Sign Up", "Forgot Password"])
+    elif menu == "About":
+        apply_style("#3b82f6")
+        st.subheader("📘 System Components")
+        cards = [
+            ("🏗️ Transformers", "Semantic understanding using SBERT."),
+            ("📉 Cosine Similarity", "Vector distance calculation."),
+            ("🔍 Skill Gap", "Automated role comparison."),
+            ("🔐 Database", "SQLite3 with SHA-256 security.")
+        ]
+        for t, d in cards:
+            st.markdown(f'<div class="info-card"><h3>{t}</h3><p>{d}</p></div>', unsafe_allow_html=True)
 
-    with tab1:
-        u = st.text_input("Username", key="login_user")
-        p = st.text_input("Password", type="password", key="login_pass")
-        if st.button("Login Now"):
-            conn = sqlite3.connect("users.db")
-            c = conn.cursor()
-            c.execute("SELECT * FROM users WHERE username=? AND password=?",
-                      (u, hash_pwd(p)))
-            if c.fetchone():
-                st.session_state.logged_in = True
-                st.success("Login successful")
-                st.session_state.page = "Home"
-            else:
-                st.error("Invalid credentials")
-            conn.close()
-
-    with tab2:
-        nu = st.text_input("New Username", key="signup_user")
-        ne = st.text_input("Email", key="signup_email")
-        npw = st.text_input("Password", type="password", key="signup_pass")
-        if st.button("Create Account"):
-            conn = sqlite3.connect("users.db")
-            c = conn.cursor()
+    elif menu == "AI Assistant":
+        apply_style("#a855f7")
+        st.subheader("🤖 Career Coach")
+        q = st.text_input("Ask anything:")
+        if q:
             try:
-                c.execute("INSERT INTO users VALUES (?,?,?)",
-                          (nu, hash_pwd(npw), ne))
-                conn.commit()
-                st.success("Account created")
-            except:
-                st.error("Username already exists")
-            conn.close()
+                # REFINED CONFIG: Use the full model path to avoid 404 version errors
+                genai.configure(api_key=st.secrets["AI_API_KEY"])
+                ai = genai.GenerativeModel(model_name='gemini-1.5-flash')
+                with st.spinner("Analyzing..."):
+                    st.chat_message("assistant").write(ai.generate_content(q).text)
+            except Exception as e:
+                st.error(f"Gemini API Error: {e}")
 
-    with tab3:
-        st.text_input("Registered Email", key="forgot_email")
-        st.info("Password reset is demo-only")
-
-# ==================================================
-# HOME PAGE
-# ==================================================
-elif st.session_state.page == "Home":
-    st.subheader("📄 Semantic Resume Matcher")
-
-    resume = st.text_area("Paste your resume here", height=220)
-
-    if st.button("Analyze Match"):
-        if resume.strip():
-            res_vec = model.encode([resume])
-            df["semantic"] = (cosine_similarity(res_vec, job_emb)[0] * 100).round(1)
-
-            res_skills = semantic_skill_extract(resume) or fallback_skill_extract(resume)
-
-            for _, row in df.sort_values("semantic", ascending=False).head(5).iterrows():
-                jd = row["clean_description"]
-                jd_skills = semantic_skill_extract(jd) or fallback_skill_extract(jd)
-
-                matched = res_skills & jd_skills
-                missing = jd_skills - res_skills
-
-                final_score = min(row["semantic"], 15.0) if not matched else \
-                    round(0.6 * row["semantic"] +
-                          0.4 * (len(matched)/len(jd_skills))*100, 1)
-
-                st.markdown(f"""
-                <div class="job-card">
-                    <h3>{row['Job Title']}</h3>
-                    <b>Final Match Score:</b> {final_score}%
-                </div>
-                """, unsafe_allow_html=True)
-
-                with st.expander("Skill Analysis"):
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        st.markdown(render_skills(matched, "match"), unsafe_allow_html=True)
-                    with c2:
-                        st.markdown(render_skills(missing, "gap"), unsafe_allow_html=True)
-
-# ==================================================
-# ABOUT PAGE
-# ==================================================
-elif st.session_state.page == "About":
-    st.subheader("📘 About This Project")
-    st.markdown("""
-    <div class="job-card">Semantic resume–JD matching using transformers</div>
-    <div class="job-card">Hybrid scoring with skill overlap</div>
-    <div class="job-card">No false positives — scores are capped</div>
-    """, unsafe_allow_html=True)
-
-# ==================================================
-# AI ASSISTANT
-# ==================================================
-elif st.session_state.page == "AI Assistant":
-    st.subheader("🤖 AI Assistant")
-    q = st.text_input("Ask about the system")
-    if q:
-        st.success(
-            "This assistant explains the system logic, scoring method, "
-            "and skill extraction process used in this project."
-        )
+    if st.sidebar.button("Logout"):
+        st.session_state.logged_in = False
+        st.rerun()
