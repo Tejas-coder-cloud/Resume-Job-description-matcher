@@ -191,6 +191,58 @@ if not st.session_state.logged_in:
                     except: st.error("Signup failed.")
                     finally: conn.close()
                 else: st.error("Invalid OTP.")
+        # ==================================================
+# ADD THIS BELOW THE VERIFY_SIGNUP BLOCK
+# ==================================================
+        elif st.session_state.auth_step == "forgot_req":
+            st.subheader("🔑 Reset Password")
+            re = st.text_input("Enter your registered Email", key="reset_email_input")
+            
+            if st.button("Send Reset OTP"):
+                conn = sqlite3.connect("users.db")
+                c = conn.cursor()
+                c.execute("SELECT username FROM users WHERE email=?", (re,))
+                user_exists = c.fetchone()
+                conn.close()
+                
+                if user_exists:
+                    otp = send_otp(re)
+                    if otp:
+                        st.session_state.otp = otp
+                        st.session_state.reset_email = re
+                        st.session_state.auth_step = "forgot_reset"
+                        st.rerun()
+                else:
+                    st.error("This email is not registered.")
+            
+            if st.button("Back to Login"):
+                st.session_state.auth_step = "login"
+                st.rerun()
+
+        elif st.session_state.auth_step == "forgot_reset":
+            st.subheader("🆕 Set New Password")
+            v_otp = st.text_input("Enter OTP from Email")
+            new_pw = st.text_input("New Password", type="password")
+            confirm_pw = st.text_input("Confirm New Password", type="password")
+            
+            if st.button("Update Password"):
+                if v_otp != st.session_state.otp:
+                    st.error("Invalid OTP.")
+                elif new_pw != confirm_pw:
+                    st.error("Passwords do not match.")
+                elif len(new_pw) < 6:
+                    st.error("Password should be at least 6 characters.")
+                else:
+                    conn = sqlite3.connect("users.db")
+                    c = conn.cursor()
+                    # Updating the password in the DB
+                    c.execute("UPDATE users SET password=? WHERE email=?", 
+                             (hash_pw(new_pw), st.session_state.reset_email))
+                    conn.commit()
+                    conn.close()
+                    st.success("Password updated! You can now login.")
+                    st.session_state.auth_step = "login"
+                    st.rerun()        
 
 # ==================================================
 # MAIN INTERFACE
