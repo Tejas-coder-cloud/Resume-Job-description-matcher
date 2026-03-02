@@ -1,5 +1,5 @@
 # ============================================================
-# Resume–JD Matcher | FINAL FULL VERSION (Hover Cards Kept)
+# Resume–JD Matcher | FINAL PRODUCTION-GRADE VERSION
 # ============================================================
 
 import streamlit as st
@@ -9,12 +9,11 @@ import sqlite3
 import hashlib
 import random
 import smtplib
+import pickle
 from email.message import EmailMessage
 
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import TfidfVectorizer
-
 import google.generativeai as genai
 
 # ------------------------------------------------------------
@@ -23,9 +22,9 @@ import google.generativeai as genai
 st.set_page_config("Resume–JD Matcher", layout="wide")
 
 # ------------------------------------------------------------
-# DYNAMIC STYLES + HOVER CARDS
+# STYLES
 # ------------------------------------------------------------
-def apply_style(bg, accent):
+def apply_style(bg):
     st.markdown(f"""
     <style>
     .stApp {{
@@ -33,78 +32,37 @@ def apply_style(bg, accent):
         background-size: 400% 400%;
         animation: gradientBG 18s ease infinite;
     }}
-
     @keyframes gradientBG {{
         0% {{background-position:0% 50%;}}
         50% {{background-position:100% 50%;}}
         100% {{background-position:0% 50%;}}
     }}
-
-    .center {{
-        max-width: 420px;
-        margin: auto;
-        text-align: center;
-    }}
-
-    button[kind="primary"] {{
-        background-color: {accent} !important;
-        color: white !important;
-        font-weight: 700;
-    }}
-
-    .result-card {{
-        background: rgba(255,255,255,0.06);
-        padding: 20px;
-        border-radius: 14px;
-        margin-bottom: 16px;
-    }}
-
-    /* ---------- HOVER INFO CARDS ---------- */
-    .info-card {{
-        background: rgba(255,255,255,0.06);
-        border-radius: 16px;
+    .card {{
+        background: rgba(255,255,255,0.08);
         padding: 22px;
-        margin-bottom: 22px;
-        border: 1px solid rgba(255,255,255,0.12);
-        transition: all 0.4s ease;
+        border-radius: 16px;
+        margin-bottom: 20px;
     }}
-
-    .info-card:hover {{
-        transform: translateY(-8px) scale(1.02);
-        background: rgba(255,255,255,0.14);
-        border-color: {accent};
-        box-shadow: 0 0 20px {accent};
+    .hover-card {{
+        background: rgba(255,255,255,0.08);
+        padding: 24px;
+        border-radius: 18px;
+        margin-bottom: 20px;
+        border: 1px solid rgba(255,255,255,0.15);
+        transition: all 0.35s ease;
     }}
-
-    .info-title {{
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: {accent};
-        margin-bottom: 8px;
+    .hover-card:hover {{
+        background: rgba(59,130,246,0.25);
+        transform: translateY(-6px);
+        box-shadow: 0 0 20px rgba(59,130,246,0.6);
     }}
-
-    .info-text {{
-        color: #e5e7eb;
-        line-height: 1.6;
-        font-size: 0.95rem;
-    }}
-
-    .skill {{
-        padding: 6px 12px;
-        border-radius: 14px;
-        margin: 4px;
-        display: inline-block;
-        font-size: 0.85rem;
-    }}
-    .match {{ background:#064e3b; color:#22c55e; }}
-    .gap {{ background:#450a0a; color:#ef4444; }}
     </style>
     """, unsafe_allow_html=True)
 
 # ------------------------------------------------------------
 # DATABASE
 # ------------------------------------------------------------
-def hash_pw(p): 
+def hash_pw(p):
     return hashlib.sha256(p.encode()).hexdigest()
 
 def init_db():
@@ -137,57 +95,62 @@ def send_otp(email):
     return otp
 
 # ------------------------------------------------------------
-# MODELS
+# LOAD MODELS
 # ------------------------------------------------------------
 @st.cache_resource
 def load_models():
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    df = pd.DataFrame({
-        "Job Title": ["Web Developer", "Data Scientist", "Mobile App Developer"],
-        "clean_description": [
-            "html css javascript react node",
-            "python machine learning statistics sql",
-            "flutter dart firebase android ios"
-        ]
-    })
-    emb = model.encode(df["clean_description"].tolist())
-    return model, df, emb
+    sbert = SentenceTransformer("all-MiniLM-L6-v2")
 
-model, df, job_emb = load_models()
+    with open("salary_model.pkl", "rb") as f:
+        salary_model = pickle.load(f)
+
+    with open("label_encoders.pkl", "rb") as f:
+        label_encoders = pickle.load(f)
+
+    job_key = list(label_encoders.keys())[0]
+    encoder = label_encoders[job_key]
+
+    descriptions = {
+        "Software Developer": "c++ python algorithms system design",
+        "Data Scientist": "machine learning statistics data analysis",
+        "Cloud Engineer": "aws cloud infrastructure networking",
+        "DevOps Engineer": "docker kubernetes automation ci cd",
+        "Web Developer": "frontend backend web technologies"
+    }
+
+    rows = [(j, descriptions.get(j, j)) for j in encoder.classes_]
+    df = pd.DataFrame(rows, columns=[job_key, "description"])
+    emb = sbert.encode(df["description"].tolist())
+
+    return sbert, salary_model, encoder, job_key, df, emb
+
+sbert, salary_model, encoder, JOB_KEY, jobs_df, job_emb = load_models()
 
 # ------------------------------------------------------------
 # SESSION STATE
 # ------------------------------------------------------------
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "auth_step" not in st.session_state:
-    st.session_state.auth_step = "login"
+for key in ["logged_in", "page", "auth_step"]:
+    if key not in st.session_state:
+        st.session_state[key] = False if key == "logged_in" else "login"
 
 # ============================================================
-# AUTH FLOW
+# AUTHENTICATION
 # ============================================================
 if not st.session_state.logged_in:
-    apply_style(
-        "linear-gradient(-45deg,#020617,#450a0a,#020617)",
-        "#ef4444"
-    )
-
-    st.markdown("<div class='center'>", unsafe_allow_html=True)
-    st.title("🔐 Login")
+    apply_style("linear-gradient(-45deg,#020617,#450a0a,#020617)")
+    st.title("🔐 Authentication")
 
     if st.session_state.auth_step == "login":
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
 
-        if st.button("Login", type="primary"):
+        if st.button("Login"):
             conn = sqlite3.connect("users.db")
             cur = conn.cursor()
-            cur.execute(
-                "SELECT * FROM users WHERE username=? AND password=?",
-                (u, hash_pw(p))
-            )
+            cur.execute("SELECT * FROM users WHERE username=? AND password=?", (u, hash_pw(p)))
             if cur.fetchone():
                 st.session_state.logged_in = True
+                st.session_state.page = "Home"
                 st.rerun()
             else:
                 st.error("Invalid credentials")
@@ -202,180 +165,142 @@ if not st.session_state.logged_in:
             st.rerun()
 
     elif st.session_state.auth_step == "signup":
-        su = st.text_input("Username")
-        se = st.text_input("Email")
-        sp = st.text_input("Password", type="password")
+        u = st.text_input("Username")
+        e = st.text_input("Email")
+        p = st.text_input("Password", type="password")
 
-        if st.button("Send OTP", type="primary"):
-            st.session_state.otp = send_otp(se)
-            st.session_state.temp_user = (su, hash_pw(sp), se)
-            st.session_state.auth_step = "verify_signup"
+        if st.button("Send OTP"):
+            st.session_state.otp = send_otp(e)
+            st.session_state.tmp_user = (u, hash_pw(p), e)
+            st.session_state.auth_step = "verify"
             st.rerun()
 
-    elif st.session_state.auth_step == "verify_signup":
+    elif st.session_state.auth_step == "verify":
         o = st.text_input("Enter OTP")
         if st.button("Verify"):
             if o == st.session_state.otp:
                 conn = sqlite3.connect("users.db")
-                conn.execute(
-                    "INSERT INTO users VALUES (?,?,?)",
-                    st.session_state.temp_user
-                )
+                conn.execute("INSERT INTO users VALUES (?,?,?)", st.session_state.tmp_user)
                 conn.commit(); conn.close()
                 st.success("Account created. Please login.")
                 st.session_state.auth_step = "login"
-                st.rerun()
 
     elif st.session_state.auth_step == "forgot":
-        fe = st.text_input("Registered Email")
-        if st.button("Send Reset OTP", type="primary"):
-            st.session_state.otp = send_otp(fe)
-            st.session_state.reset_email = fe
-            st.session_state.auth_step = "reset_pw"
+        e = st.text_input("Registered Email")
+        if st.button("Send Reset OTP"):
+            st.session_state.otp = send_otp(e)
+            st.session_state.reset_email = e
+            st.session_state.auth_step = "reset"
             st.rerun()
 
-    elif st.session_state.auth_step == "reset_pw":
+    elif st.session_state.auth_step == "reset":
         o = st.text_input("OTP")
         npw = st.text_input("New Password", type="password")
         if st.button("Reset Password"):
             if o == st.session_state.otp:
                 conn = sqlite3.connect("users.db")
-                conn.execute(
-                    "UPDATE users SET password=? WHERE email=?",
-                    (hash_pw(npw), st.session_state.reset_email)
-                )
+                conn.execute("UPDATE users SET password=? WHERE email=?", (hash_pw(npw), st.session_state.reset_email))
                 conn.commit(); conn.close()
-                st.success("Password updated. Login again.")
+                st.success("Password updated. Please login.")
                 st.session_state.auth_step = "login"
-                st.rerun()
 
-    st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
 # ============================================================
-# MAIN APP
+# SIDEBAR
 # ============================================================
-menu = st.sidebar.radio("Navigation", ["Home", "About", "AI Assistant"])
-if st.sidebar.button("Logout"):
+st.sidebar.title("📂 Menu")
+if st.sidebar.button("🏠 Home"):
+    st.session_state.page = "Home"
+if st.sidebar.button("📘 About"):
+    st.session_state.page = "About"
+if st.sidebar.button("🤖 AI Assistant"):
+    st.session_state.page = "AI"
+if st.sidebar.button("🚪 Logout"):
     st.session_state.logged_in = False
+    st.session_state.auth_step = "login"
     st.rerun()
 
-# ------------------------------------------------------------
+# ============================================================
 # HOME
-# ------------------------------------------------------------
-if menu == "Home":
-    apply_style(
-        "linear-gradient(-45deg,#022c22,#020617,#064e3b)",
-        "#22c55e"
-    )
-
+# ============================================================
+if st.session_state.page == "Home":
+    apply_style("linear-gradient(-45deg,#022c22,#020617,#064e3b)")
     st.title("🎯 Resume–JD Matcher")
-    exp = st.slider("Experience (Years)", 0, 20, 2)
-    resume = st.text_area("Resume Skills")
 
-    if st.button("Analyze", type="primary"):
-        vec = model.encode([resume])
-        sims = cosine_similarity(vec, job_emb)[0]
-        idx = np.argmax(sims)
-        job = df.iloc[idx]
-        score = sims[idx]
+    exp = st.slider("Experience (Years)", 0, 20, 0)
+    resume = st.text_area("Paste Resume / Skills")
 
-        band = {
-            "Web Developer": (4,10),
-            "Data Scientist": (6,14),
-            "Mobile App Developer": (5,12)
-        }
+    if st.button("Analyze"):
+        emb = sbert.encode([resume])
+        sims = cosine_similarity(emb, job_emb)[0]
+        skills = set(resume.lower().split())
 
-        lo, hi = band[job["Job Title"]]
-        salary = lo + (hi - lo) * min(exp / 10, 1) * score
+        for i in sims.argsort()[::-1][:3]:
+            job = jobs_df.iloc[i]
+            sim = sims[i]
+            job_enc = encoder.transform([job[JOB_KEY]])[0]
 
-        st.markdown(f"""
-        <div class="result-card">
-        <h3>{job['Job Title']}</h3>
-        Match: {round(score*100,1)}%<br>
-        Estimated Salary: ₹{salary:.1f} LPA
-        <hr>
-        <b>Why this salary?</b><br>
-        Role band: {lo}-{hi} LPA<br>
-        Experience factor: {exp} years<br>
-        Semantic match strength: {round(score*100,1)}%
-        </div>
-        """, unsafe_allow_html=True)
+            base = salary_model.predict([[job_enc, exp, sim]])[0]
+            salary = base * (1 + 0.1 * exp)
 
-# ------------------------------------------------------------
-# ABOUT (HOVER CARDS — KEPT)
-# ------------------------------------------------------------
-elif menu == "About":
-    apply_style(
-        "linear-gradient(-45deg,#1e3a8a,#020617,#312e81)",
-        "#60a5fa"
-    )
+            overlap = skills.intersection(job["description"].split())
 
+            if job[JOB_KEY] == "Cloud Engineer":
+                explanation = f"You show familiarity with infrastructure concepts like {', '.join(overlap) or 'cloud basics'}, suggesting readiness for cloud operations roles."
+            elif job[JOB_KEY] == "Data Scientist":
+                explanation = f"Your exposure to analytical or ML-oriented skills indicates potential to work with data-driven decision systems."
+            elif job[JOB_KEY] == "DevOps Engineer":
+                explanation = f"Automation and deployment-related knowledge in your profile aligns with DevOps workflows."
+            elif job[JOB_KEY] == "Web Developer":
+                explanation = f"Your skill set reflects experience in building user-facing or backend web systems."
+            else:
+                explanation = f"Your technical background supports general software development responsibilities."
+
+            st.markdown(f"""
+            <div class="card">
+            <h3>{job[JOB_KEY]}</h3>
+            Match: {sim*100:.1f}%<br>
+            Salary: ₹{salary:.1f} LPA
+            <hr>{explanation}
+            </div>
+            """, unsafe_allow_html=True)
+
+# ============================================================
+# ABOUT
+# ============================================================
+elif st.session_state.page == "About":
+    apply_style("linear-gradient(-45deg,#1e3a8a,#020617,#312e81)")
     st.title("📘 System Architecture")
 
-    cards = [
-        ("🧠 Transformer Architecture",
-         "Sentence-BERT converts text into dense embeddings.<br>"
-         "Semantic meaning is preserved beyond keywords.<br>"
-         "Enables accurate context-aware matching."),
+    for title, text in [
+        ("Transformer Architecture", "Context-aware semantic encoding."),
+        ("Skill Gap Analysis", "Identifies missing competencies."),
+        ("Cosine Similarity", "Measures relevance mathematically."),
+        ("Database", "Stores credentials securely."),
+        ("Explainability", "Builds user trust.")
+    ]:
+        st.markdown(f"<div class='hover-card'><b>{title}</b><br>{text}</div>", unsafe_allow_html=True)
 
-        ("🧩 Skill Gap Analysis",
-         "TF-IDF identifies matched and missing skills.<br>"
-         "Shows alignment with job expectations.<br>"
-         "Guides focused upskilling."),
-
-        ("🗄️ Secure Database",
-         "SQLite stores credentials locally.<br>"
-         "Passwords are hashed using SHA-256.<br>"
-         "Prevents plaintext data exposure."),
-
-        ("📐 Cosine Similarity",
-         "Measures angular similarity of embeddings.<br>"
-         "Produces normalized relevance scores.<br>"
-         "Higher score means better match."),
-
-        ("💰 Salary Prediction",
-         "Uses industry role-based salary bands.<br>"
-         "Experience and match strength scale salary.<br>"
-         "Avoids unrealistic estimates.")
-    ]
-
-    for t, d in cards:
-        st.markdown(f"""
-        <div class="info-card">
-            <div class="info-title">{t}</div>
-            <div class="info-text">{d}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-# ------------------------------------------------------------
-# AI ASSISTANT
-# ------------------------------------------------------------
-elif menu == "AI Assistant":
-    apply_style(
-        "linear-gradient(-45deg,#581c87,#020617,#701a75)",
-        "#c084fc"
-    )
-
+# ============================================================
+# AI ASSISTANT (LOCAL FALLBACK)
+# ============================================================
+elif st.session_state.page == "AI":
+    apply_style("linear-gradient(-45deg,#581c87,#020617,#701a75)")
     st.title("🤖 Career AI Assistant")
 
-    if "chat" not in st.session_state:
-        st.session_state.chat = []
-
-    for m in st.session_state.chat:
-        with st.chat_message(m["role"]):
-            st.markdown(m["content"])
-
-    q = st.chat_input("Ask about careers, skills, or learning paths")
+    q = st.text_input("Ask a career question")
 
     if q:
-        st.session_state.chat.append({"role": "user", "content": q})
-        with st.chat_message("assistant"):
-            try:
-                genai.configure(api_key=st.secrets["AI_API_KEY"])
-                ai = genai.GenerativeModel("gemini-1.5-flash")
-                ans = ai.generate_content(q).text
-            except Exception:
-                ans = "AI service unavailable. Please try again later."
-            st.markdown(ans)
-            st.session_state.chat.append({"role": "assistant", "content": ans})
+        try:
+            genai.configure(api_key=st.secrets["AI_API_KEY"])
+            model = genai.GenerativeModel("gemini-pro")
+            st.markdown(model.generate_content(q).text)
+        except Exception:
+            st.info(
+                "AI service is currently unavailable.\n\n"
+                "Suggested approach:\n"
+                "- Build projects aligned with your target role\n"
+                "- Strengthen core fundamentals\n"
+                "- Gain internship or hands-on experience"
+            )
