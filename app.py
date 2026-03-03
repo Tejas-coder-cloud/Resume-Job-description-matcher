@@ -1,5 +1,5 @@
 # ============================================================
-# Resume–JD Matcher | FINAL PRODUCTION-GRADE VERSION
+# Resume–JD Matcher | FULL FINAL PRODUCTION VERSION
 # ============================================================
 
 import streamlit as st
@@ -9,9 +9,9 @@ import sqlite3
 import hashlib
 import random
 import smtplib
-import pickle
+import time
+import re
 from email.message import EmailMessage
-
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import google.generativeai as genai
@@ -22,45 +22,54 @@ import google.generativeai as genai
 st.set_page_config("Resume–JD Matcher", layout="wide")
 
 # ------------------------------------------------------------
-# STYLES
+# MODERN UI STYLE
 # ------------------------------------------------------------
-def apply_style(bg):
-    st.markdown(f"""
-    <style>
-    .stApp {{
-        background: {bg};
-        background-size: 400% 400%;
-        animation: gradientBG 18s ease infinite;
-    }}
-    @keyframes gradientBG {{
-        0% {{background-position:0% 50%;}}
-        50% {{background-position:100% 50%;}}
-        100% {{background-position:0% 50%;}}
-    }}
-    .card {{
-        background: rgba(255,255,255,0.08);
-        padding: 22px;
-        border-radius: 16px;
-        margin-bottom: 20px;
-    }}
-    .hover-card {{
-        background: rgba(255,255,255,0.08);
-        padding: 24px;
-        border-radius: 18px;
-        margin-bottom: 20px;
-        border: 1px solid rgba(255,255,255,0.15);
-        transition: all 0.35s ease;
-    }}
-    .hover-card:hover {{
-        background: rgba(59,130,246,0.25);
-        transform: translateY(-6px);
-        box-shadow: 0 0 20px rgba(59,130,246,0.6);
-    }}
-    </style>
-    """, unsafe_allow_html=True)
+st.markdown("""
+<style>
+.stApp {
+    background: linear-gradient(-45deg,#0f172a,#1e293b,#0f172a);
+    background-size: 400% 400%;
+    animation: gradientBG 15s ease infinite;
+    color: white;
+}
+@keyframes gradientBG {
+    0% {background-position:0% 50%;}
+    50% {background-position:100% 50%;}
+    100% {background-position:0% 50%;}
+}
+.card {
+    backdrop-filter: blur(12px);
+    background: rgba(255,255,255,0.05);
+    padding: 25px;
+    border-radius: 18px;
+    margin-bottom: 25px;
+    animation: fadeIn 0.8s ease-in-out;
+    transition: 0.3s;
+}
+.card:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0 25px rgba(59,130,246,0.5);
+}
+@keyframes fadeIn {
+    from {opacity:0; transform: translateY(15px);}
+    to {opacity:1; transform: translateY(0);}
+}
+.stButton>button {
+    background: linear-gradient(90deg,#2563eb,#7c3aed);
+    color:white;
+    border-radius:10px;
+    padding:10px 20px;
+    border:none;
+    transition:0.3s;
+}
+.stButton>button:hover {
+    transform:scale(1.05);
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ------------------------------------------------------------
-# DATABASE
+# DATABASE SETUP
 # ------------------------------------------------------------
 def hash_pw(p):
     return hashlib.sha256(p.encode()).hexdigest()
@@ -74,7 +83,8 @@ def init_db():
             email TEXT
         )
     """)
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
 
 init_db()
 
@@ -95,114 +105,154 @@ def send_otp(email):
     return otp
 
 # ------------------------------------------------------------
-# LOAD MODELS
+# LOAD TRANSFORMER MODEL
 # ------------------------------------------------------------
 @st.cache_resource
-def load_models():
-    sbert = SentenceTransformer("all-MiniLM-L6-v2")
-
-    with open("salary_model.pkl", "rb") as f:
-        salary_model = pickle.load(f)
-
-    with open("label_encoders.pkl", "rb") as f:
-        label_encoders = pickle.load(f)
-
-    job_key = list(label_encoders.keys())[0]
-    encoder = label_encoders[job_key]
+def load_model():
+    model = SentenceTransformer("all-MiniLM-L6-v2")
 
     descriptions = {
-        "Software Developer": "c++ python algorithms system design",
-        "Data Scientist": "machine learning statistics data analysis",
-        "Cloud Engineer": "aws cloud infrastructure networking",
-        "DevOps Engineer": "docker kubernetes automation ci cd",
-        "Web Developer": "frontend backend web technologies"
+        "Software Developer":
+        "java python c++ backend system_design algorithms data_structures api rest git microservices",
+
+        "Data Scientist":
+        "python machine_learning statistics pandas numpy data_analysis deep_learning sql r nlp",
+
+        "Cloud Engineer":
+        "aws cloud_computing docker kubernetes infrastructure devops terraform monitoring",
+
+        "DevOps Engineer":
+        "ci_cd automation docker kubernetes linux scripting terraform jenkins monitoring",
+
+        "Web Developer":
+        "html css javascript react frontend backend node express mongodb rest_api"
     }
 
-    rows = [(j, descriptions.get(j, j)) for j in encoder.classes_]
-    df = pd.DataFrame(rows, columns=[job_key, "description"])
-    emb = sbert.encode(df["description"].tolist())
+    df = pd.DataFrame(list(descriptions.items()), columns=["Role", "description"])
+    embeddings = model.encode(df["description"].tolist())
+    return model, df, embeddings
 
-    return sbert, salary_model, encoder, job_key, df, emb
-
-sbert, salary_model, encoder, JOB_KEY, jobs_df, job_emb = load_models()
+model, jobs_df, job_embeddings = load_model()
 
 # ------------------------------------------------------------
 # SESSION STATE
 # ------------------------------------------------------------
-for key in ["logged_in", "page", "auth_step"]:
-    if key not in st.session_state:
-        st.session_state[key] = False if key == "logged_in" else "login"
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "auth_step" not in st.session_state:
+    st.session_state.auth_step = "login"
+if "page" not in st.session_state:
+    st.session_state.page = "Home"
 
 # ============================================================
 # AUTHENTICATION
 # ============================================================
 if not st.session_state.logged_in:
-    apply_style("linear-gradient(-45deg,#020617,#450a0a,#020617)")
+
     st.title("🔐 Authentication")
 
+    # LOGIN
     if st.session_state.auth_step == "login":
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
 
         if st.button("Login"):
             conn = sqlite3.connect("users.db")
             cur = conn.cursor()
-            cur.execute("SELECT * FROM users WHERE username=? AND password=?", (u, hash_pw(p)))
+            cur.execute("SELECT * FROM users WHERE username=? AND password=?",
+                        (username, hash_pw(password)))
             if cur.fetchone():
                 st.session_state.logged_in = True
-                st.session_state.page = "Home"
                 st.rerun()
             else:
                 st.error("Invalid credentials")
             conn.close()
 
-        if st.button("Forgot Password"):
+        col1, col2 = st.columns(2)
+        if col1.button("New User? Sign Up"):
+            st.session_state.auth_step = "signup"
+            st.rerun()
+        if col2.button("Forgot Password"):
             st.session_state.auth_step = "forgot"
             st.rerun()
 
-        if st.button("New User? Sign Up"):
-            st.session_state.auth_step = "signup"
-            st.rerun()
-
+    # SIGNUP
     elif st.session_state.auth_step == "signup":
-        u = st.text_input("Username")
-        e = st.text_input("Email")
-        p = st.text_input("Password", type="password")
+        new_user = st.text_input("Choose Username")
+        new_email = st.text_input("Email")
+        new_pass = st.text_input("Password", type="password")
 
         if st.button("Send OTP"):
-            st.session_state.otp = send_otp(e)
-            st.session_state.tmp_user = (u, hash_pw(p), e)
+            st.session_state.otp = send_otp(new_email)
+            st.session_state.temp_user = (new_user, hash_pw(new_pass), new_email)
             st.session_state.auth_step = "verify"
+            st.success("OTP sent.")
             st.rerun()
 
     elif st.session_state.auth_step == "verify":
-        o = st.text_input("Enter OTP")
+        otp_input = st.text_input("Enter OTP")
         if st.button("Verify"):
-            if o == st.session_state.otp:
+            if otp_input == st.session_state.otp:
                 conn = sqlite3.connect("users.db")
-                conn.execute("INSERT INTO users VALUES (?,?,?)", st.session_state.tmp_user)
-                conn.commit(); conn.close()
+                conn.execute("INSERT INTO users VALUES (?,?,?)",
+                             st.session_state.temp_user)
+                conn.commit()
+                conn.close()
                 st.success("Account created. Please login.")
                 st.session_state.auth_step = "login"
+            else:
+                st.error("Invalid OTP")
 
+    # FORGOT PASSWORD (USERNAME + EMAIL)
     elif st.session_state.auth_step == "forgot":
-        e = st.text_input("Registered Email")
+
+        reset_username = st.text_input("Username")
+        reset_email = st.text_input("Registered Email")
+
         if st.button("Send Reset OTP"):
-            st.session_state.otp = send_otp(e)
-            st.session_state.reset_email = e
-            st.session_state.auth_step = "reset"
-            st.rerun()
+
+            conn = sqlite3.connect("users.db")
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM users WHERE username=? AND email=?",
+                        (reset_username, reset_email))
+            user_exists = cur.fetchone()
+            conn.close()
+
+            if user_exists:
+                st.session_state.otp = send_otp(reset_email)
+                st.session_state.reset_username = reset_username
+                st.session_state.reset_email = reset_email
+                st.session_state.auth_step = "reset"
+                st.success("OTP sent to registered email.")
+                st.rerun()
+            else:
+                st.error("Username and Email do not match.")
 
     elif st.session_state.auth_step == "reset":
-        o = st.text_input("OTP")
-        npw = st.text_input("New Password", type="password")
+
+        otp_input = st.text_input("Enter OTP")
+        new_password = st.text_input("New Password", type="password")
+
         if st.button("Reset Password"):
-            if o == st.session_state.otp:
+
+            if otp_input == st.session_state.otp:
+
                 conn = sqlite3.connect("users.db")
-                conn.execute("UPDATE users SET password=? WHERE email=?", (hash_pw(npw), st.session_state.reset_email))
-                conn.commit(); conn.close()
-                st.success("Password updated. Please login.")
+                conn.execute(
+                    "UPDATE users SET password=? WHERE username=? AND email=?",
+                    (
+                        hash_pw(new_password),
+                        st.session_state.reset_username,
+                        st.session_state.reset_email
+                    )
+                )
+                conn.commit()
+                conn.close()
+
+                st.success("Password updated successfully.")
                 st.session_state.auth_step = "login"
+            else:
+                st.error("Invalid OTP")
 
     st.stop()
 
@@ -225,82 +275,130 @@ if st.sidebar.button("🚪 Logout"):
 # HOME
 # ============================================================
 if st.session_state.page == "Home":
-    apply_style("linear-gradient(-45deg,#022c22,#020617,#064e3b)")
-    st.title("🎯 Resume–JD Matcher")
+
+    st.title("🚀 Resume–JD Matcher")
 
     exp = st.slider("Experience (Years)", 0, 20, 0)
     resume = st.text_area("Paste Resume / Skills")
 
     if st.button("Analyze"):
-        emb = sbert.encode([resume])
-        sims = cosine_similarity(emb, job_emb)[0]
-        skills = set(resume.lower().split())
 
-        for i in sims.argsort()[::-1][:3]:
-            job = jobs_df.iloc[i]
-            sim = sims[i]
-            job_enc = encoder.transform([job[JOB_KEY]])[0]
+        with st.spinner("🔍 Performing intelligent skill analysis..."):
+            time.sleep(1)
 
-            base = salary_model.predict([[job_enc, exp, sim]])[0]
-            salary = base * (1 + 0.1 * exp)
+            skills = re.split(r'[,\s]+', resume.lower().strip())
+            skills = [s for s in skills if s]
 
-            overlap = skills.intersection(job["description"].split())
+            resume_emb = model.encode([resume])
+            sims = cosine_similarity(resume_emb, job_embeddings)[0]
 
-            if job[JOB_KEY] == "Cloud Engineer":
-                explanation = f"You show familiarity with infrastructure concepts like {', '.join(overlap) or 'cloud basics'}, suggesting readiness for cloud operations roles."
-            elif job[JOB_KEY] == "Data Scientist":
-                explanation = f"Your exposure to analytical or ML-oriented skills indicates potential to work with data-driven decision systems."
-            elif job[JOB_KEY] == "DevOps Engineer":
-                explanation = f"Automation and deployment-related knowledge in your profile aligns with DevOps workflows."
-            elif job[JOB_KEY] == "Web Developer":
-                explanation = f"Your skill set reflects experience in building user-facing or backend web systems."
-            else:
-                explanation = f"Your technical background supports general software development responsibilities."
+            for i in sims.argsort()[::-1][:3]:
 
-            st.markdown(f"""
-            <div class="card">
-            <h3>{job[JOB_KEY]}</h3>
-            Match: {sim*100:.1f}%<br>
-            Salary: ₹{salary:.1f} LPA
-            <hr>{explanation}
-            </div>
-            """, unsafe_allow_html=True)
+                role = jobs_df.iloc[i]["Role"]
+                desc = jobs_df.iloc[i]["description"]
+                role_tokens = desc.split()
+                role_embs = model.encode(role_tokens)
+
+                positive, moderate, unmatched = [], [], []
+
+                for skill in skills:
+                    if skill in role_tokens:
+                        positive.append((skill, 1.0))
+                        continue
+
+                    skill_emb = model.encode([skill])
+                    scores = cosine_similarity(skill_emb, role_embs)[0]
+                    max_score = np.max(scores)
+
+                    if max_score > 0.55:
+                        positive.append((skill, max_score))
+                    elif max_score > 0.35:
+                        moderate.append((skill, max_score))
+                    else:
+                        unmatched.append(skill)
+
+                semantic_score = sims[i]
+                skill_weight = len(positive)*0.6 + len(moderate)*0.3
+                final_score = 0.6*semantic_score + 0.4*skill_weight
+
+                base_salary = 3 + semantic_score*3
+                experience_bonus = exp*0.7
+                skill_bonus = len(positive)*0.5
+                salary = base_salary + experience_bonus + skill_bonus
+
+                explanation_lines = []
+                for skill, score in positive:
+                    explanation_lines.append(
+                        f"• {skill} significantly contributes to your suitability for {role}."
+                    )
+                for skill, score in moderate:
+                    explanation_lines.append(
+                        f"• {skill} partially supports the role requirements."
+                    )
+                if not explanation_lines:
+                    explanation_lines.append(
+                        "• Your skills show general technical relevance but lack strong specialization for this role."
+                    )
+
+                explanation_html = "<br>".join(explanation_lines)
+
+                st.markdown(f"""
+                <div class="card">
+                <h2>{role}</h2>
+                <b>Match Score:</b> {final_score*100:.1f}%<br>
+                <b>Predicted Salary:</b> ₹{salary:.1f} LPA
+                <hr>
+                <b>Explainability:</b><br>
+                {explanation_html}
+                <br><br>
+                <b>Matched Skills:</b> {', '.join([s for s,_ in positive]) if positive else "None"}<br>
+                <b>Unmatched Skills:</b> {', '.join(unmatched) if unmatched else "None"}
+                <br><br>
+                <b>Salary Breakdown:</b><br>
+                Base: ₹{base_salary:.1f} LPA<br>
+                Experience Impact: ₹{experience_bonus:.1f} LPA<br>
+                Skill Bonus: ₹{skill_bonus:.1f} LPA
+                </div>
+                """, unsafe_allow_html=True)
 
 # ============================================================
 # ABOUT
 # ============================================================
 elif st.session_state.page == "About":
-    apply_style("linear-gradient(-45deg,#1e3a8a,#020617,#312e81)")
+
     st.title("📘 System Architecture")
 
-    for title, text in [
-        ("Transformer Architecture", "Context-aware semantic encoding."),
-        ("Skill Gap Analysis", "Identifies missing competencies."),
-        ("Cosine Similarity", "Measures relevance mathematically."),
-        ("Database", "Stores credentials securely."),
-        ("Explainability", "Builds user trust.")
-    ]:
-        st.markdown(f"<div class='hover-card'><b>{title}</b><br>{text}</div>", unsafe_allow_html=True)
+    sections = {
+        "Transformer Architecture":
+        "We use SentenceTransformer (MiniLM) to convert resumes and job descriptions into contextual embeddings.",
+        "Skill Gap Analysis":
+        "Each user skill is compared against role tokens using exact and semantic similarity scoring.",
+        "Cosine Similarity":
+        "Cosine similarity measures angular distance between embedding vectors.",
+        "Database":
+        "User credentials are securely stored in SQLite using SHA-256 hashing.",
+        "Explainability":
+        "Each skill’s individual contribution is calculated and displayed dynamically."
+    }
+
+    for title, text in sections.items():
+        st.markdown(f"<div class='card'><b>{title}</b><br>{text}</div>",
+                    unsafe_allow_html=True)
 
 # ============================================================
-# AI ASSISTANT (LOCAL FALLBACK)
+# AI ASSISTANT
 # ============================================================
 elif st.session_state.page == "AI":
-    apply_style("linear-gradient(-45deg,#581c87,#020617,#701a75)")
+
     st.title("🤖 Career AI Assistant")
 
-    q = st.text_input("Ask a career question")
+    question = st.text_input("Ask a career-related question")
 
-    if q:
+    if question:
         try:
             genai.configure(api_key=st.secrets["AI_API_KEY"])
-            model = genai.GenerativeModel("gemini-pro")
-            st.markdown(model.generate_content(q).text)
+            model_ai = genai.GenerativeModel("gemini-pro")
+            response = model_ai.generate_content(question)
+            st.markdown(response.text)
         except Exception:
-            st.info(
-                "AI service is currently unavailable.\n\n"
-                "Suggested approach:\n"
-                "- Build projects aligned with your target role\n"
-                "- Strengthen core fundamentals\n"
-                "- Gain internship or hands-on experience"
-            )
+            st.error("AI service unavailable. Check API key.")
