@@ -9,7 +9,6 @@ import sqlite3
 import hashlib
 import random
 import smtplib
-import time
 import re
 from email.message import EmailMessage
 from sentence_transformers import SentenceTransformer
@@ -102,17 +101,23 @@ def get_ai_response(prompt):
 def hash_pw(p):
     return hashlib.sha256(p.encode()).hexdigest()
 
+
 def init_db():
+
     conn = sqlite3.connect("users.db")
-    conn.execute("""
+    cur = conn.cursor()
+
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS users(
         username TEXT PRIMARY KEY,
         password TEXT,
         email TEXT
     )
     """)
+
     conn.commit()
     conn.close()
+
 
 init_db()
 
@@ -167,6 +172,7 @@ def load_model():
 
     return model,df,embeddings
 
+
 model,jobs_df,job_embeddings=load_model()
 
 
@@ -207,8 +213,10 @@ if not st.session_state.logged_in:
             conn=sqlite3.connect("users.db")
             cur=conn.cursor()
 
-            cur.execute("SELECT * FROM users WHERE username=? AND password=?",
-            (username,hash_pw(password)))
+            cur.execute(
+                "SELECT * FROM users WHERE username=? AND password=?",
+                (username,hash_pw(password))
+            )
 
             if cur.fetchone():
 
@@ -256,7 +264,10 @@ if not st.session_state.logged_in:
             if otp==st.session_state.otp:
 
                 conn=sqlite3.connect("users.db")
-                conn.execute("INSERT INTO users VALUES (?,?,?)",st.session_state.temp)
+                conn.execute(
+                    "INSERT INTO users VALUES (?,?,?)",
+                    st.session_state.temp
+                )
                 conn.commit()
                 conn.close()
 
@@ -277,7 +288,11 @@ if not st.session_state.logged_in:
             conn=sqlite3.connect("users.db")
             cur=conn.cursor()
 
-            cur.execute("SELECT * FROM users WHERE username=? AND email=?",(user,email))
+            cur.execute(
+                "SELECT * FROM users WHERE username=? AND email=?",
+                (user,email)
+            )
+
             if cur.fetchone():
 
                 st.session_state.otp=send_otp(email)
@@ -286,7 +301,7 @@ if not st.session_state.logged_in:
                 st.rerun()
 
             else:
-                st.error("No matching user")
+                st.error("User not found. Please sign up first.")
 
 
     elif st.session_state.auth_step=="reset":
@@ -299,8 +314,10 @@ if not st.session_state.logged_in:
             if otp==st.session_state.otp:
 
                 conn=sqlite3.connect("users.db")
-                conn.execute("UPDATE users SET password=? WHERE username=?",
-                (hash_pw(newpw),st.session_state.reset[0]))
+                conn.execute(
+                    "UPDATE users SET password=? WHERE username=?",
+                    (hash_pw(newpw),st.session_state.reset[0])
+                )
                 conn.commit()
                 conn.close()
 
