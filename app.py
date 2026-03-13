@@ -88,7 +88,7 @@ def get_ai_response(prompt):
 
     try:
         genai.configure(api_key=st.secrets["AI_API_KEY"])
-        model = genai.GenerativeModel("gemini-pro")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(prompt)
         return response.text
 
