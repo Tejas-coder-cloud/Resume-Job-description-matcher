@@ -9,4 +9,5 @@ pdfplumber
 plotly
 google-generativeai
 spacy
+yagmail
 
