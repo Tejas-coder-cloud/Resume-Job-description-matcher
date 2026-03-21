@@ -5,3 +5,8 @@ scikit-learn
 sentence-transformers
 transformers
 torch
+pdfplumber
+plotly
+google-generativeai
+spacy
+
