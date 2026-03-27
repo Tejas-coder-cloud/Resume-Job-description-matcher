@@ -84,7 +84,7 @@ if "page" not in st.session_state: st.session_state.page = "Home"
 
 # ---------------- AUTH ---------------- #
 if st.session_state.user is None:
-    st.markdown("<h1 class='glow-text'>RESUME AI ANALYZER</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='glow-text'>RESUME-JD MATCHER</h1>", unsafe_allow_html=True)
     auth_tab = st.tabs(["Login", "Sign Up", "Forgot Password"])
     
     with auth_tab[0]:
