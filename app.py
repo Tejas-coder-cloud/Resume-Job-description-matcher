@@ -212,59 +212,83 @@ if st.session_state.user is None:
     # ================= FORGOT PASSWORD ================= #
     with tabs[2]:
 
+
+    # Username input
         u = st.text_input("Username", key="forgot_user")
 
-        # 🔹 Send OTP
+    # Send OTP button
         if st.button("Send OTP", key="forgot_send_otp"):
 
             if not u:
                 st.warning("Enter username first ❗")
+
             else:
-                cur.execute("SELECT * FROM users WHERE username=?", (u,))
+                cur.execute(
+                "SELECT * FROM users WHERE username=?",
+                (u,)
+            )
+
                 if not cur.fetchone():
                     st.error("User does not exist ❌")
+
                 else:
-                    otp = str(random.randint(100000,999999))
+                    otp = str(random.randint(100000, 999999))
 
-                    st.session_state.forgot_otp = otp
-                    st.session_state.forgot_user = u
-                    st.session_state.forgot_time = time.time()
+                # Store OTP information
+                    st.session_state["forgot_otp"] = otp
+                    st.session_state["otp_user"] = u
+                    st.session_state["forgot_time"] = time.time()
 
-                    st.success("OTP sent ✅")
-                    st.code(otp)  # ⚠️ replace with email later
+                    st.success("OTP generated ✅")
 
-        # 🔹 Inputs
-        otp_in = st.text_input("Enter OTP", key="forgot_otp_input")
-        newp = st.text_input("New Password", type="password", key="forgot_pass")
+                # For testing only
+                    st.code(otp)
 
-        # 🔹 Reset Password
+    # OTP and new password inputs
+        otp_in = st.text_input(
+        "Enter OTP",
+        key="forgot_otp_input"
+    )
+
+        newp = st.text_input(
+        "New Password",
+        type="password",
+        key="forgot_pass"
+    )
+
+    # Reset Password button
         if st.button("Reset Password", key="forgot_reset_btn"):
 
-            if not st.session_state.get("forgot_otp"):
+            if "forgot_otp" not in st.session_state:
                 st.warning("Click 'Send OTP' first ❗")
 
             elif not otp_in or not newp:
                 st.warning("Enter OTP and new password ❗")
 
-            elif time.time() - st.session_state.get("forgot_time",0) > 60:
+            elif time.time() - st.session_state["forgot_time"] > 60:
                 st.error("OTP expired ❌")
 
-            elif otp_in != st.session_state.get("forgot_otp"):
+            elif otp_in != st.session_state["forgot_otp"]:
                 st.error("Invalid OTP ❌")
 
-            elif u != st.session_state.get("forgot_user"):
+            elif u != st.session_state["otp_user"]:
                 st.error("Username mismatch ❌")
 
             else:
-                cur.execute("UPDATE users SET password=? WHERE username=?",
-                            (hash_pass(newp), u))
+
+                cur.execute(
+                "UPDATE users SET password=? WHERE username=?",
+                (hash_pass(newp), u)
+            )
+
                 conn.commit()
 
-                st.success("Password updated ✅")
+                st.success("Password updated successfully ✅")
 
-                # Reset session
-                st.session_state.forgot_otp = None
-                st.session_state.forgot_user = None
+            # Clear OTP data
+                del st.session_state["forgot_otp"]
+                del st.session_state["otp_user"]
+                del st.session_state["forgot_time"]
 # ---------------- MAIN APP ---------------- #
 else:
 
@@ -285,79 +309,211 @@ else:
         file = st.file_uploader("Upload Resume", type="pdf")
 
         if file:
-            text = " ".join([p.extract_text() or "" for p in pdfplumber.open(file).pages])
+
+            text = " ".join(
+        [p.extract_text() or "" for p in pdfplumber.open(file).pages]
+    )
+
             st.session_state.resume_text = text
-        
-            # Detect language
+
+    # ================= LANGUAGE DETECTION =================
+
             raw_lang_code = detect(text)
-            lang_map = {"hi": "Hindi", "es": "Spanish", "fr": "French", "de": "German", "mr": "Marathi", "en": "English"}
+
+            lang_map = {
+        "hi": "Hindi",
+        "es": "Spanish",
+        "fr": "French",
+        "de": "German",
+        "mr": "Marathi",
+        "en": "English"
+    }
+
             target_lang = lang_map.get(raw_lang_code, "English")
 
-            # Roles extraction
-            roles_raw = cached_ai(f"Return ONLY 3 job roles (in {target_lang}) separated by commas based on this:\n{text[:1000]}")
-            roles = [r.strip() for r in roles_raw.split(",")] if roles_raw else ["Software Engineer"]
+    # ================= ROLE EXTRACTION =================
+
+            roles_raw = cached_ai(
+        f"""
+        Return ONLY 3 suitable job roles
+        in {target_lang}
+        separated by commas.
+
+        Resume:
+        {text[:1000]}
+        """
+    )
+
+            roles = (
+        [r.strip() for r in roles_raw.split(",")]
+        if roles_raw
+        else ["Software Engineer"]
+    )
+
             st.session_state.dynamic_roles = roles
 
-            # This will store the full text for the download button
-            full_report_content = f"RESUME ANALYSIS REPORT ({target_lang})\n" + "="*30 + "\n\n"
+    # ================= DOWNLOAD REPORT =================
+
+            full_report_content = (
+        f"RESUME ANALYSIS REPORT ({target_lang})\n"
+        + "=" * 40 + "\n\n"
+    )
+
+    # ================= ROLE LOOP =================
 
             for role in roles:
-            # Get Skills
-                skills_raw = cached_ai(f"List 6 technical skills for {role} in {target_lang}. Return ONLY comma separated values.") or "skill1, skill2"
-                skills_list = [s.strip().lower() for s in skills_raw.split(",") if s.strip()]
 
-            # Similarity Score
-                resume_emb = transformer_model.encode(text.lower(), convert_to_tensor=True)
-                matched, missing = [], []
-                for skill in skills_list:
-                    skill_emb = transformer_model.encode(skill, convert_to_tensor=True)
-                    score_sim = util.pytorch_cos_sim(skill_emb, resume_emb).item()
-                    if score_sim > 0.35: matched.append(skill)
-                    else: missing.append(skill)
+        # ---------------- SKILL EXTRACTION ----------------
 
-                score = (len(matched)/len(skills_list))*100 if skills_list else 0
+                skills_raw = cached_ai(
+            f"""
+            List exactly 6 technical skills
+            required for {role}.
 
-            # Multilingual Improvement Prompt
-                improvement = cached_ai(f"""
-            Act as a professional resume reviewer. Respond ENTIRELY IN {target_lang}.
-            For the role: {role}
-            Provide:
-            - IMPROVEMENTS
-            - MISSING SKILLS
-            - PROJECT SUGGESTIONS
-            Resume: {text[:1500]}
-            """)
+            Return ONLY comma separated values.
+            """
+        ) or "Python, SQL"
 
-            # 1. Update the UI (Glow Cards)
-                st.markdown(f"""
-            <div class='glow-card'>
-                <h3 style='color:#818cf8; margin-top:0;'>{role} — {score:.1f}% Match</h3>
-                <p><b>Matched:</b> {" ".join([f"<span class='tag match'>{m}</span>" for m in matched])}</p>
-                <p><b>Missing:</b> {" ".join([f"<span class='tag miss'>{m}</span>" for m in missing])}</p>
-                <div style='background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px; border-left: 4px solid #818cf8;'>
-                    {improvement.replace("\n", "<br>")}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+                skills_list = [
+            s.strip().lower()
+            for s in skills_raw.split(",")
+            if s.strip()
+        ]
 
-            # 2. Append to the Downloadable Report String
-                full_report_content += (
-                f"ROLE: {role}\n"
-                f"MATCH SCORE: {score:.1f}%\n"
-                f"MATCHED SKILLS: {', '.join(matched)}\n"
-                f"MISSING SKILLS: {', '.join(missing)}\n"
-                f"{'-'*10}\n"
-                f"ADVICE:\n{improvement}\n"
-                f"{'='*30}\n\n"
+        # ---------------- SBERT MATCHING ----------------
+
+                matched = []
+                missing = []
+
+                resume_chunks = [
+            chunk.strip()
+                for chunk in re.split(
+                r"[.\n,;:]",
+                text.lower()
+            )
+                if chunk.strip()
+        ]
+
+            resume_embeddings = transformer_model.encode(
+            resume_chunks,
+            convert_to_tensor=True
+        )
+
+            for skill in skills_list:
+
+                skill_embedding = transformer_model.encode(
+                skill,
+                convert_to_tensor=True
             )
 
-        # Final Download Button (placed after all cards are rendered)
-            st.download_button(
-            label="📥 Download Full Analysis Report",
-            data=full_report_content,
-            file_name=f"Resume_Report_{raw_lang_code}.txt",
-            mime="text/plain"
+                similarities = util.pytorch_cos_sim(
+                skill_embedding,
+                resume_embeddings
+            )[0]
+
+                max_similarity = similarities.max().item()
+
+                if max_similarity >= 0.35:
+                    matched.append(skill)
+                else:
+                    missing.append(skill)
+
+            score = (
+            len(matched)
+            / len(skills_list)
+            * 100
+            if skills_list
+            else 0
         )
+
+        # ---------------- IMPROVEMENT TEXT ----------------
+
+            improvement = cached_ai(
+            f"""
+            Act as a professional resume reviewer.
+
+            Language: {target_lang}
+
+            Role: {role}
+
+            Write in plain text.
+
+            Do NOT use:
+            - markdown
+            - bullets
+            - headings
+            - asterisks
+
+            Explain:
+            1. Resume improvements
+            2. Missing skills
+            3. Project suggestions
+
+            Resume:
+            {text[:1500]}
+            """
+        )
+
+        # ---------------- UI CARD ----------------
+
+            st.markdown(
+            f"""
+            <div class='glow-card'>
+
+            <h3 style='color:#818cf8;'>
+            {role} — {score:.1f}% Match
+            </h3>
+
+            <p>
+            <b>Matched Skills:</b>
+            {" ".join([f"<span class='tag match'>{m}</span>" for m in matched])}
+            </p>
+
+            <p>
+            <b>Missing Skills:</b>
+            {" ".join([f"<span class='tag miss'>{m}</span>" for m in missing])}
+            </p>
+
+            <div style='
+                background:rgba(255,255,255,0.05);
+                padding:15px;
+                border-radius:10px;
+                border-left:4px solid #818cf8;
+                white-space:pre-wrap;
+            '>
+
+            {improvement}
+
+            </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # ---------------- REPORT CONTENT ----------------
+
+            full_report_content += (
+            f"ROLE: {role}\n"
+            f"MATCH SCORE: {score:.1f}%\n\n"
+            f"MATCHED SKILLS:\n"
+            f"{', '.join(matched)}\n\n"
+            f"MISSING SKILLS:\n"
+            f"{', '.join(missing)}\n\n"
+            f"RECOMMENDATIONS:\n"
+            f"{improvement}\n\n"
+            + "=" * 40
+            + "\n\n"
+        )
+
+    # ================= DOWNLOAD BUTTON =================
+
+            st.download_button(
+        label="📥 Download Full Analysis Report",
+        data=full_report_content,
+        file_name=f"Resume_Report_{raw_lang_code}.txt",
+        mime="text/plain"
+    )
     # ================= ANALYTICS ================= #
     elif st.session_state.page=="Analytics":
         if st.session_state.resume_text:
@@ -377,10 +533,22 @@ else:
 
     # ================= SALARY ================= #
     elif st.session_state.page == "Salary":
-        if st.session_state.resume_text:
+        
+        if not st.session_state.resume_text:
+             st.warning("Please upload your resume on the Home page first.")
+        else:     
 
-            role = st.selectbox("Select Target Role", st.session_state.dynamic_roles)
-            exp = st.slider("Years of Experience", 0, 25, 2)
+            role = st.selectbox(
+            "Select Target Role",
+            st.session_state.dynamic_roles
+        )
+
+            exp = st.slider(
+            "Years of Experience",
+            0,
+            25,
+            2
+        )
 
             if st.button("Predict Market Salary"):
 
@@ -399,52 +567,65 @@ Do not write anything else.
                 success = False
 
             # ================= AI RESULT PARSING ================= #
-            if res:
+                if res:
+
                     nums = re.findall(r"\d+", res)
 
                     if len(nums) >= 2:
+
                         low = int(nums[0])
                         high = int(nums[1])
 
-                    # 🔥 Fix small numbers (like 13 → 13L)
+                    # Fix small numbers (13 -> 13L)
                         if low < 100000:
                             low *= 100000
                             high *= 100000
 
-                    # 🔥 Sanity check
+                    # Sanity checks
                         if low < 200000:
                             low = 300000
+
                         if high < low:
                             high = low + 300000
 
                         st.balloons()
+
                         st.metric(
                         "Estimated Annual Package (AI Analyzed)",
                         f"₹{low:,} - ₹{high:,}"
                     )
-                        st.caption("✨ Real-time market analysis based on your specific tech stack.")
+
+                        st.caption(
+                        "✨ Real-time market analysis based on your specific tech stack."
+                    )
+
                         success = True
 
             # ================= FALLBACK ================= #
-            if not success:
-                st.warning("AI service unavailable. Showing baseline estimate.")
+                if not success:
 
-                base_val = 400000 + (exp * 250000)
+                    st.warning(
+                    "AI service unavailable. Showing baseline estimate."
+                )
 
-                if "Data" in role or "Senior" in role:
-                    base_val += 200000
+                    base_val = 400000 + (exp * 250000)
 
-                low = int(base_val * 0.8)
-                high = int(base_val * 1.3)
+                    if "Data" in role or "Senior" in role:
+                        base_val += 200000
 
-                st.metric(
+                    low = int(base_val * 0.8)
+                    high = int(base_val * 1.3)
+
+                    st.metric(
                     "Estimated Annual Package (Baseline)",
                     f"₹{low:,} - ₹{high:,}"
                 )
-                st.info("This is a general estimate based on experience.")
 
-        else:
-            st.warning("Please upload your resume on the Home page first.")
+                    st.info(
+                    "This is a general estimate based on experience."
+                )
+
+    
     # ================= ASSISTANT ================= #
     elif st.session_state.page=="Assistant":
         q = st.text_input("Ask something")
