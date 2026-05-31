@@ -76,6 +76,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY_PRIMARY", "")
+st.write("API key found:", bool(GEMINI_API_KEY))
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
