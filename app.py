@@ -92,7 +92,8 @@ def cached_ai(prompt):
     try:
         model = genai.GenerativeModel("gemini-2.5-flash")
         return model.generate_content(prompt).text
-    except:
+    except Exception as e:
+        st.error(f"AI Error: {str(e)}")
         return None
 
 # ---------------- DATABASE ---------------- #
