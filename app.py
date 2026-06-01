@@ -165,7 +165,8 @@ if st.session_state.user is None:
                 try:
                     send_email_otp(email, otp)
                     st.success("OTP sent to email ✅")
-                except:
+                except exception as e:
+                    st.error(f"Email sending failed: {str(e)}")
                     st.warning("Email not configured, showing OTP below")
                     st.code(otp)
 
