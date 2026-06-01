@@ -10,4 +10,5 @@ plotly
 google-generativeai
 spacy
 yagmail
+langdetect
 
