@@ -12,7 +12,7 @@ import google.generativeai as genai
 import spacy
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect
-
+from pymongo import MongoClient 
 def is_valid_email(email):
     return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 # ✅ Send OTP via Gmail
@@ -97,11 +97,9 @@ def cached_ai(prompt):
         return None
 
 # ---------------- DATABASE ---------------- #
-DB_FILE = "users.db"
-conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-cur = conn.cursor()
-cur.execute("CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)")
-conn.commit()
+client = MongoClient(st.secrets["MONGO_URL"])
+db = client["resume_matcher"]
+users = db["users"]
 
 def hash_pass(p): return hashlib.sha256(p.encode()).hexdigest()
 
@@ -124,8 +122,12 @@ if st.session_state.user is None:
         p = st.text_input("Password", type="password", key="login_pass")
 
         if st.button("Login", key="login_btn"):
-            cur.execute("SELECT * FROM users WHERE username=? AND password=?", (u,hash_pass(p)))
-            if cur.fetchone():
+
+            user = users.find_one({
+                "username": u,
+                "password": hash_pass(p)
+            })
+            if user:
                 st.session_state.user = u
                 st.success("Login successful ✅")
                 st.rerun()
@@ -201,11 +203,16 @@ if st.session_state.user is None:
             else:
                 data = st.session_state.signup_data
 
-                cur.execute("INSERT INTO users VALUES (?,?)",
-                        (data["username"], hash_pass(data["password"])))
-                conn.commit()
+                if users.find_one({"username": data["username"]}):
+                    st.error("Username already exists ❌")
+                else:
+                    users.insert_one({
+                    "username": data["username"],
+                    "email": data["email"],
+                    "password": hash_pass(data["password"])
+                })
+                    st.success("Account created successfully 🎉")    
 
-                st.success("Account created successfully 🎉")
 
             # Reset session
                 st.session_state.signup_otp = None
@@ -225,12 +232,9 @@ if st.session_state.user is None:
                 st.warning("Enter username first ❗")
 
             else:
-                cur.execute(
-                "SELECT * FROM users WHERE username=?",
-                (u,)
-            )
+                user = users.find_one({"username": u})
 
-                if not cur.fetchone():
+                if not user:
                     st.error("User does not exist ❌")
 
                 else:
@@ -277,15 +281,16 @@ if st.session_state.user is None:
                 st.error("Username mismatch ❌")
 
             else:
-
-                cur.execute(
-                "UPDATE users SET password=? WHERE username=?",
-                (hash_pass(newp), u)
-            )
-
-                conn.commit()
-
+                users.update_one(
+                    {"username:": u},
+                    {
+                        "$set": {
+                            password: hash_pass(newp)
+                        }
+                    }
+                )
                 st.success("Password updated successfully ✅")
+
 
             # Clear OTP data
                 del st.session_state["forgot_otp"]
