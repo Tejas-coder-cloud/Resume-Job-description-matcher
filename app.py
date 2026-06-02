@@ -74,7 +74,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY_PRIMARY", "")
-st.write("API key found:", bool(GEMINI_API_KEY))
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
@@ -298,6 +297,7 @@ else:
             Analyze this resume
             Return exactly 3 job roles
             Rules: 
+            -Return exactly 3 roles 
             -Return only role names 
             -Separate using commas
             -No numbering
@@ -312,11 +312,18 @@ else:
             }                                          
         """
     )
+            st.write("roles_raw=",roles_raw)
             roles = (
         [r.strip() for r in roles_raw.split(",")]
         if roles_raw
-        else ["Software Engineer"]
+        else []
     )
+            if len(roles)<3:
+                roles=[
+                    "Artificial Inelligence",
+                    "Machine Learning Engineer",
+                    "Data Scientist"
+                ]
             st.session_state.dynamic_roles = roles
 
     # ================= DOWNLOAD REPORT =================
@@ -395,9 +402,9 @@ else:
             Write in plain text.
             IMPORTANT::
             -Return only plain text
-            -Maximum 5 bullet points
+            -Maximum 3 bullet points
             -Each bullet point should consist of 1 short sentence
-            -Maximum 15 words per bullet 
+            -Maximum 12 words per bullet 
             -No introduction
             -Focus on only the most important improvements
             -No conclusion
@@ -405,6 +412,7 @@ else:
             -Do not use markdown
             -Do not use code blocks
             -Use simple bullet points 
+            -No HTML 
             Provide:
             1. Resume improvements
             2. Missing skills
@@ -413,6 +421,8 @@ else:
             {text[:1500]}
             """
         )
+            if improvement:
+                improvement=re.sub(r"<[^>]+>","",improvement)
 
         # ---------------- UI CARD ----------------
 
