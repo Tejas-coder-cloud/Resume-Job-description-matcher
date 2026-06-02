@@ -19,12 +19,10 @@ def is_valid_email(email):
 def send_email_otp(receiver_email, otp):
     sender_email = st.secrets["EMAIL_USER"]
     app_password = st.secrets["EMAIL_PASS"]
-
     msg = MIMEText(f"Your OTP is: {otp}")
     msg["Subject"] = "OTP Verification"
     msg["From"] = sender_email
     msg["To"] = receiver_email
-
     server = smtplib.SMTP("smtp.gmail.com", 587)
     server.starttls()
     server.login(sender_email, app_password)
@@ -84,7 +82,6 @@ if GEMINI_API_KEY:
 @st.cache_resource
 def load_models():
     return spacy.load("en_core_web_sm"), SentenceTransformer('all-MiniLM-L6-v2')
-
 nlp, transformer_model = load_models()
 
 @st.cache_data
@@ -113,14 +110,12 @@ if "page" not in st.session_state:
 
 # ---------------- AUTH ---------------- #
 if st.session_state.user is None:
-
     tabs = st.tabs(["Login","Signup","Forgot Password"])
 
     # ================= LOGIN ================= #
     with tabs[0]:
         u = st.text_input("Username", key="login_user")
         p = st.text_input("Password", type="password", key="login_pass")
-
         if st.button("Login", key="login_btn"):
 
             user = users.find_one({
@@ -136,20 +131,16 @@ if st.session_state.user is None:
 
     # ================= SIGNUP ================= #
     with tabs[1]:
-
         username = st.text_input("Username", key="signup_username")
         email = st.text_input("Email", key="signup_email")
         password = st.text_input("Password", type="password", key="signup_password")
 
     # 🔹 Send OTP
         if st.button("Send OTP", key="signup_send_otp"):
-
             if not username or not email or not password:
                 st.warning("Fill all fields ❗")
-
             elif not is_valid_email(email):
                 st.error("Enter valid email ❌")
-
             else:
                 otp = str(random.randint(100000,999999))
 
@@ -161,7 +152,6 @@ if st.session_state.user is None:
                 "password": password
             }
                 st.session_state.signup_time = time.time()
-
                 try:
                     send_email_otp(email, otp)
                     st.success("OTP sent to email ✅")
@@ -175,35 +165,26 @@ if st.session_state.user is None:
 
     # 🔹 Verify OTP  ✅ NOW INSIDE TAB
         if st.button("Verify OTP", key="signup_verify_btn"):
-
             if not st.session_state.get("signup_otp"):
                 st.warning("Click 'Send OTP' first ❗")
-
             elif not otp_input:
                 st.warning("Enter OTP ❗")
-
             elif time.time() - st.session_state.get("signup_time",0) > 60:
                 st.error("OTP expired ❌")
-
             elif otp_input != st.session_state.get("signup_otp"):
                 st.error("Invalid OTP ❌")
-
             else:
                 st.session_state.signup_verified = True
                 st.success("OTP Verified ✅")
 
     # 🔹 Register  ✅ NOW INSIDE TAB
         if st.button("Register", key="signup_register_btn"):
-
             if not st.session_state.get("signup_verified"):
                 st.warning("Verify OTP first ❗")
-
             elif not st.session_state.get("signup_data"):
                 st.error("Session expired ❌")
-
             else:
                 data = st.session_state.signup_data
-
                 if users.find_one({"username": data["username"]}):
                     st.error("Username already exists ❌")
                 else:
@@ -213,50 +194,36 @@ if st.session_state.user is None:
                     "password": hash_pass(data["password"])
                 })
                     st.success("Account created successfully 🎉")    
-
-
             # Reset session
                 st.session_state.signup_otp = None
                 st.session_state.signup_verified = False
                 st.session_state.signup_data = None
     # ================= FORGOT PASSWORD ================= #
     with tabs[2]:
-
-
     # Username input
         u = st.text_input("Username", key="forgot_user")
-
     # Send OTP button
         if st.button("Send OTP", key="forgot_send_otp"):
-
             if not u:
                 st.warning("Enter username first ❗")
-
             else:
                 user = users.find_one({"username": u})
-
                 if not user:
                     st.error("User does not exist ❌")
-
                 else:
                     otp = str(random.randint(100000, 999999))
-
                 # Store OTP information
                     st.session_state["forgot_otp"] = otp
                     st.session_state["otp_user"] = u
                     st.session_state["forgot_time"] = time.time()
-
                     st.success("OTP generated ✅")
-
                 # For testing only
                     st.code(otp)
-
     # OTP and new password inputs
         otp_in = st.text_input(
         "Enter OTP",
         key="forgot_otp_input"
     )
-
         newp = st.text_input(
         "New Password",
         type="password",
@@ -265,22 +232,16 @@ if st.session_state.user is None:
 
     # Reset Password button
         if st.button("Reset Password", key="forgot_reset_btn"):
-
             if "forgot_otp" not in st.session_state:
                 st.warning("Click 'Send OTP' first ❗")
-
             elif not otp_in or not newp:
                 st.warning("Enter OTP and new password ❗")
-
             elif time.time() - st.session_state["forgot_time"] > 60:
                 st.error("OTP expired ❌")
-
             elif otp_in != st.session_state["forgot_otp"]:
                 st.error("Invalid OTP ❌")
-
             elif u != st.session_state["otp_user"]:
                 st.error("Username mismatch ❌")
-
             else:
                 users.update_one(
                     {"username:": u},
@@ -291,15 +252,12 @@ if st.session_state.user is None:
                     }
                 )
                 st.success("Password updated successfully ✅")
-
-
             # Clear OTP data
                 del st.session_state["forgot_otp"]
                 del st.session_state["otp_user"]
                 del st.session_state["forgot_time"]
 # ---------------- MAIN APP ---------------- #
 else:
-
     # Sidebar
     with st.sidebar:
         st.write(f"👤 {st.session_state.user}")
@@ -315,19 +273,14 @@ else:
     if st.session_state.page == "Home":
         st.subheader("Resume Analysis")
         file = st.file_uploader("Upload Resume", type="pdf")
-
         if file:
-
             text = " ".join(
         [p.extract_text() or "" for p in pdfplumber.open(file).pages]
     )
-
             st.session_state.resume_text = text
 
     # ================= LANGUAGE DETECTION =================
-
             raw_lang_code = detect(text)
-
             lang_map = {
         "hi": "Hindi",
         "es": "Spanish",
@@ -341,23 +294,29 @@ else:
 
     # ================= ROLE EXTRACTION =================
 
-            roles_raw = cached_ai(
-        f"""
-        Return ONLY 3 suitable job roles
-        in {target_lang}
-        separated by commas.
+            roles_raw = cached_ai(f"""
+            Analyze this resume
+            Return exactly 3 job roles
+            Rules: 
+            -Return only role names 
+            -Separate using commas
+            -No numbering
+            -No explanations
+            -No extra text
 
-        Resume:
-        {text[:1000]}
+            Example:
+            Software Engineer,Backend Developer , Full Stack Developer 
+            Resume:
+            {
+                text[:1500]
+            }                                          
         """
     )
-
             roles = (
         [r.strip() for r in roles_raw.split(",")]
         if roles_raw
         else ["Software Engineer"]
     )
-
             st.session_state.dynamic_roles = roles
 
     # ================= DOWNLOAD REPORT =================
@@ -381,7 +340,6 @@ else:
             Return ONLY comma separated values.
             """
         ) or "Python, SQL"
-
                 skills_list = [
             s.strip().lower()
             for s in skills_raw.split(",")
@@ -392,7 +350,6 @@ else:
 
                 matched = []
                 missing = []
-
                 resume_chunks = [
             chunk.strip()
                 for chunk in re.split(
@@ -401,31 +358,25 @@ else:
             )
                 if chunk.strip()
         ]
-
             resume_embeddings = transformer_model.encode(
             resume_chunks,
             convert_to_tensor=True
         )
 
             for skill in skills_list:
-
                 skill_embedding = transformer_model.encode(
                 skill,
                 convert_to_tensor=True
             )
-
                 similarities = util.pytorch_cos_sim(
                 skill_embedding,
                 resume_embeddings
             )[0]
-
                 max_similarity = similarities.max().item()
-
                 if max_similarity >= 0.35:
                     matched.append(skill)
                 else:
                     missing.append(skill)
-
             score = (
             len(matched)
             / len(skills_list)
@@ -439,24 +390,25 @@ else:
             improvement = cached_ai(
             f"""
             Act as a professional resume reviewer.
-
             Language: {target_lang}
-
             Role: {role}
-
             Write in plain text.
-
-            Do NOT use:
-            - markdown
-            - bullets
-            - headings
-            - asterisks
-
-            Explain:
+            IMPORTANT::
+            -Return only plain text
+            -Maximum 5 bullet points
+            -Each bullet point should consist of 1 short sentence
+            -Maximum 15 words per bullet 
+            -No introduction
+            -Focus on only the most important improvements
+            -No conclusion
+            -No paragraphs 
+            -Do not use markdown
+            -Do not use code blocks
+            -Use simple bullet points 
+            Provide:
             1. Resume improvements
             2. Missing skills
             3. Project suggestions
-
             Resume:
             {text[:1500]}
             """
@@ -467,21 +419,17 @@ else:
             st.markdown(
             f"""
             <div class='glow-card'>
-
             <h3 style='color:#818cf8;'>
             {role} — {score:.1f}% Match
             </h3>
-
             <p>
             <b>Matched Skills:</b>
             {" ".join([f"<span class='tag match'>{m}</span>" for m in matched])}
             </p>
-
             <p>
             <b>Missing Skills:</b>
             {" ".join([f"<span class='tag miss'>{m}</span>" for m in missing])}
             </p>
-
             <div style='
                 background:rgba(255,255,255,0.05);
                 padding:15px;
@@ -489,11 +437,8 @@ else:
                 border-left:4px solid #818cf8;
                 white-space:pre-wrap;
             '>
-
             {improvement}
-
             </div>
-
             </div>
             """,
             unsafe_allow_html=True
@@ -541,46 +486,36 @@ else:
 
     # ================= SALARY ================= #
     elif st.session_state.page == "Salary":
-        
         if not st.session_state.resume_text:
              st.warning("Please upload your resume on the Home page first.")
         else:     
-
             role = st.selectbox(
             "Select Target Role",
             st.session_state.dynamic_roles
         )
-
             exp = st.slider(
             "Years of Experience",
             0,
             25,
             2
         )
-
             if st.button("Predict Market Salary"):
 
             # ================= AI PROMPT ================= #
                 prompt = f"""
 Give salary range in India for {role} with {exp} years experience.
-
 STRICT FORMAT:
 Only numbers, no symbols, no commas
 Example: 600000-1200000
-
 Do not write anything else.
 """
-
                 res = cached_ai(prompt)
                 success = False
 
             # ================= AI RESULT PARSING ================= #
                 if res:
-
                     nums = re.findall(r"\d+", res)
-
                     if len(nums) >= 2:
-
                         low = int(nums[0])
                         high = int(nums[1])
 
@@ -595,32 +530,24 @@ Do not write anything else.
 
                         if high < low:
                             high = low + 300000
-
                         st.balloons()
-
                         st.metric(
                         "Estimated Annual Package (AI Analyzed)",
                         f"₹{low:,} - ₹{high:,}"
                     )
-
                         st.caption(
                         "✨ Real-time market analysis based on your specific tech stack."
                     )
-
                         success = True
 
             # ================= FALLBACK ================= #
                 if not success:
-
                     st.warning(
                     "AI service unavailable. Showing baseline estimate."
                 )
-
                     base_val = 400000 + (exp * 250000)
-
                     if "Data" in role or "Senior" in role:
                         base_val += 200000
-
                     low = int(base_val * 0.8)
                     high = int(base_val * 1.3)
 
@@ -628,7 +555,6 @@ Do not write anything else.
                     "Estimated Annual Package (Baseline)",
                     f"₹{low:,} - ₹{high:,}"
                 )
-
                     st.info(
                     "This is a general estimate based on experience."
                 )
