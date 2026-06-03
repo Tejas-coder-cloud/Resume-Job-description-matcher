@@ -336,7 +336,8 @@ else:
     # ================= ROLE LOOP =================
 
             for role in roles:
-
+                st.write("Processing....",role)
+                st.subheader(role)
         # ---------------- SKILL EXTRACTION ----------------
 
                 skills_raw = cached_ai(
@@ -396,27 +397,12 @@ else:
 
             improvement = cached_ai(
             f"""
-            Act as a professional resume reviewer.
-            Language: {target_lang}
-            Role: {role}
-            Write in plain text.
-            IMPORTANT::
-            -Return only plain text
-            -Maximum 3 bullet points
-            -Each bullet point should consist of 1 short sentence
-            -Maximum 12 words per bullet 
-            -No introduction
-            -Focus on only the most important improvements
-            -No conclusion
-            -No paragraphs 
-            -Do not use markdown
-            -Do not use code blocks
-            -Use simple bullet points 
-            -No HTML 
-            Provide:
-            1. Resume improvements
-            2. Missing skills
-            3. Project suggestions
+            Review this resume
+            Return:
+            -Top 3 improvements
+            -Top 3 missing skills
+            -Top 2 project suggestions
+            Keep answers short
             Resume:
             {text[:1500]}
             """
