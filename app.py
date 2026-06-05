@@ -318,7 +318,7 @@ else:
             }                                          
         """
     )
-            st.write("roles_raw=",roles_raw)
+            
             roles = (
         [r.strip() for r in roles_raw.split(",")]
         if roles_raw
@@ -342,7 +342,7 @@ else:
     # ================= ROLE LOOP =================
 
             for role in roles:
-                st.write("Processing....",role)
+               
                 st.subheader(role)
         # ---------------- SKILL EXTRACTION ----------------
 
@@ -403,7 +403,7 @@ else:
 
             improvement = cached_ai(
             f"""
-            Review this resume
+            Role:{role}
             Return:
             -Top 3 improvements
             -Top 3 missing skills
