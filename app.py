@@ -243,10 +243,10 @@ if st.session_state.user is None:
                 st.error("Username mismatch ❌")
             else:
                 users.update_one(
-                    {"username:": u},
+                    {"username": u},
                     {
                         "$set": {
-                            password: hash_pass(newp)
+                            "password": hash_pass(newp)
                         }
                     }
                 )
