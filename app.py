@@ -215,9 +215,15 @@ if st.session_state.user is None:
                     st.session_state["forgot_otp"] = otp
                     st.session_state["otp_user"] = u
                     st.session_state["forgot_time"] = time.time()
-                    st.success("OTP generated ✅")
+                    email=user["email"]
+                    try:
+                        send_email_otp(email,otp)
+                        st.success("OTP sent to the registered email ✅")
+                    except Exception as e:
+                        st.error(f"Email sending failed:{e}")    
+                        st.success("OTP generated ✅")
                 # For testing only
-                    st.code(otp)
+                        st.code(otp)
     # OTP and new password inputs
         otp_in = st.text_input(
         "Enter OTP",
