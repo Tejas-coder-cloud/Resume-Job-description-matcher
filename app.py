@@ -353,7 +353,6 @@ else:
         )
             improvement = cached_ai(
             f"""
-            Role:{role}
             Return:
             -Top 3 improvements
             -Top 3 missing skills
