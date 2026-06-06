@@ -1,6 +1,5 @@
 import re
 import time
-import sqlite3
 import smtplib
 from email.mime.text import MIMEText
 import hashlib
@@ -340,6 +339,36 @@ else:
     )
 
     # ================= ROLE LOOP =================
+            resume_chunks = [
+            chunk.strip()
+                for chunk in re.split(
+                r"[.\n,;:]",
+                text.lower()
+            )
+                if chunk.strip()
+        ]
+            resume_embeddings = transformer_model.encode(
+            resume_chunks,
+            convert_to_tensor=True
+        )
+            improvement = cached_ai(
+            f"""
+            Role:{role}
+            Return:
+            -Top 3 improvements
+            -Top 3 missing skills
+            -Top 2 project suggestions
+            Keep answers short
+            Resume:
+            {text[:1500]}
+            """
+        )
+            if improvement:
+                improvement=re.sub(r"<[^>]+>","",improvement)
+                improvement = improvement.replace("</p>", "")
+                improvement = improvement.replace("<p>", "")
+                improvement = improvement.replace("<div>", "")
+                improvement = improvement.replace("</div>", "")
 
             for role in roles:
                
@@ -364,18 +393,8 @@ else:
 
                 matched = []
                 missing = []
-                resume_chunks = [
-            chunk.strip()
-                for chunk in re.split(
-                r"[.\n,;:]",
-                text.lower()
-            )
-                if chunk.strip()
-        ]
-            resume_embeddings = transformer_model.encode(
-            resume_chunks,
-            convert_to_tensor=True
-        )
+                
+                
 
             for skill in skills_list:
                 skill_embedding = transformer_model.encode(
@@ -401,20 +420,7 @@ else:
 
         # ---------------- IMPROVEMENT TEXT ----------------
 
-            improvement = cached_ai(
-            f"""
-            Role:{role}
-            Return:
-            -Top 3 improvements
-            -Top 3 missing skills
-            -Top 2 project suggestions
-            Keep answers short
-            Resume:
-            {text[:1500]}
-            """
-        )
-            if improvement:
-                improvement=re.sub(r"<[^>]+>","",improvement)
+            
 
         # ---------------- UI CARD ----------------
 
@@ -447,6 +453,8 @@ else:
         )
 
         # ---------------- REPORT CONTENT ----------------
+            clean_improvement = re.sub(r"\*+", "", improvement)
+            clean_improvement = re.sub(r"#+", "", clean_improvement)
 
             full_report_content += (
             f"ROLE: {role}\n"
@@ -456,7 +464,7 @@ else:
             f"MISSING SKILLS:\n"
             f"{', '.join(missing)}\n\n"
             f"RECOMMENDATIONS:\n"
-            f"{improvement}\n\n"
+            f"{clean_improvement}\n\n"
             + "=" * 40
             + "\n\n"
         )
