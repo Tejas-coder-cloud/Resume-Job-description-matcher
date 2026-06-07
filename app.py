@@ -88,7 +88,7 @@ def cached_ai(prompt):
         model = genai.GenerativeModel("gemini-2.5-flash")
         return model.generate_content(prompt).text
     except Exception as e:
-        st.error(f"AI Error: {str(e)}")
+        st.warning("AI service temporarily unavailable. Please try again later.")
         return None
 
 # ---------------- DATABASE ---------------- #
@@ -363,30 +363,65 @@ else:
             """
         )
             if improvement:
-                improvement=re.sub(r"<[^>]+>","",improvement)
+                improvement=re.sub(r"<[^>]+>",
+                "",improvement)
+                improvement=re.sub(
+                    r"\*\*|__|#",
+                    "",
+                    improvement
+                )
                 improvement = improvement.replace("</p>", "")
                 improvement = improvement.replace("<p>", "")
                 improvement = improvement.replace("<div>", "")
                 improvement = improvement.replace("</div>", "")
 
             for role in roles:
+                
+
+
                
-                st.subheader(role)
+                
         # ---------------- SKILL EXTRACTION ----------------
 
-                skills_raw = cached_ai(
-            f"""
-            List exactly 6 technical skills
-            required for {role}.
+                role_skills = {
+    "Backend Developer": [
+        "python","sql","api development",
+        "database management","git","docker"
+    ],
+    "Frontend Developer": [
+        "html","css","javascript",
+        "react","git","responsive design"
+    ],
+    "Full Stack Developer": [
+        "html","css","javascript",
+        "python","sql","git"
+    ],
+    "Machine Learning Engineer": [
+        "python","machine learning",
+        "tensorflow","pytorch",
+        "data preprocessing","statistics"
+    ],
+    "Data Scientist": [
+        "python","sql",
+        "machine learning",
+        "statistics",
+        "data visualization",
+        "pandas"
+    ],
+    "AI Engineer": [
+        "python",
+        "machine learning",
+        "deep learning",
+        "llms",
+        "prompt engineering",
+        "vector databases"
+    ]
+}
 
-            Return ONLY comma separated values.
-            """
-        ) or "Python, SQL"
-                skills_list = [
-            s.strip().lower()
-            for s in skills_raw.split(",")
-            if s.strip()
-        ]
+                skills_list = role_skills.get(
+    role,
+    ["python","sql"]
+)
 
         # ---------------- SBERT MATCHING ----------------
 
@@ -395,7 +430,7 @@ else:
                 
                 
 
-            for skill in skills_list:
+        for skill in skills_list:
                 skill_embedding = transformer_model.encode(
                 skill,
                 convert_to_tensor=True
@@ -409,7 +444,7 @@ else:
                     matched.append(skill)
                 else:
                     missing.append(skill)
-            score = (
+        score = (
             len(matched)
             / len(skills_list)
             * 100
@@ -423,7 +458,7 @@ else:
 
         # ---------------- UI CARD ----------------
 
-            st.markdown(
+        st.markdown(
             f"""
             <div class='glow-card'>
             <h3 style='color:#818cf8;'>
@@ -452,10 +487,10 @@ else:
         )
 
         # ---------------- REPORT CONTENT ----------------
-            clean_improvement = re.sub(r"\*+", "", improvement)
-            clean_improvement = re.sub(r"#+", "", clean_improvement)
+        clean_improvement = re.sub(r"\*+", "", improvement)
+        clean_improvement = re.sub(r"#+", "", clean_improvement)
 
-            full_report_content += (
+        full_report_content += (
             f"ROLE: {role}\n"
             f"MATCH SCORE: {score:.1f}%\n\n"
             f"MATCHED SKILLS:\n"
@@ -470,7 +505,7 @@ else:
 
     # ================= DOWNLOAD BUTTON =================
 
-            st.download_button(
+        st.download_button(
         label="📥 Download Full Analysis Report",
         data=full_report_content,
         file_name=f"Resume_Report_{raw_lang_code}.txt",
@@ -572,6 +607,9 @@ Do not write anything else.
     # ================= ASSISTANT ================= #
     elif st.session_state.page=="Assistant":
         q = st.text_input("Ask something")
+        if "messages" not in st.session_state:
+            st.session_state.message=[]
+         
 
         if st.button("Ask AI"):
 
@@ -579,6 +617,12 @@ Do not write anything else.
                 st.warning("Please enter a question")
             else:
                 ans = cached_ai(q)
+                st.session_state.messages.append(
+                    ("You",q)
+                )
+                st.session_state.messages.append(
+                    ("AI",ans)
+                )
 
                 if ans:
                     st.write(ans)
