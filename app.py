@@ -376,13 +376,9 @@ else:
                 improvement = improvement.replace("</div>", "")
 
             for role in roles:
-                
+                    
 
-
-               
-                
         # ---------------- SKILL EXTRACTION ----------------
-
                 role_skills = {
     "Backend Developer": [
         "python","sql","api development",
@@ -417,7 +413,6 @@ else:
         "vector databases"
     ]
 }
-
                 skills_list = role_skills.get(
     role,
     ["python","sql"]
@@ -430,16 +425,16 @@ else:
                 
                 
 
-        for skill in skills_list:
-                skill_embedding = transformer_model.encode(
+                for skill in skills_list:
+                    skill_embedding = transformer_model.encode(
                 skill,
                 convert_to_tensor=True
             )
-                similarities = util.pytorch_cos_sim(
+                    similarities = util.pytorch_cos_sim(
                 skill_embedding,
                 resume_embeddings
             )[0]
-                max_similarity = similarities.max().item()
+                    max_similarity = similarities.max().item()
                 if max_similarity >= 0.35:
                     matched.append(skill)
                 else:
