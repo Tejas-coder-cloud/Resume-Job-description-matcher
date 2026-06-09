@@ -12,6 +12,25 @@ import spacy
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect
 from pymongo import MongoClient 
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from io import BytesIO
+def create_pdf(report_text):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer)
+    styles = getSampleStyleSheet()
+    content = []
+    for line in report_text.split("\n"):
+        content.append(
+            Paragraph(line, styles["BodyText"])
+        )
+        content.append(
+            Spacer(1, 4)
+        )
+    doc.build(content)
+    pdf = buffer.getvalue()
+    buffer.close()
+    return pdf
 def is_valid_email(email):
     return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 # ✅ Send OTP via Gmail
@@ -497,14 +516,16 @@ else:
             + "=" * 40
             + "\n\n"
         )
+            pdf_file = create_pdf(full_report_content)
 
     # ================= DOWNLOAD BUTTON =================
 
-                st.download_button(
+            st.download_button(
         label="📥 Download Full Analysis Report",
-        data=full_report_content,
-        file_name=f"Resume_Report_{raw_lang_code}.txt",
-        mime="text/plain"
+        data=pdf_file,
+        file_name=f"Resume_Report_{raw_lang_code}.pdf",
+        mime="application/pdf",
+        key=f"download_{role}"
     )
     # ================= ANALYTICS ================= #
     elif st.session_state.page=="Analytics":
