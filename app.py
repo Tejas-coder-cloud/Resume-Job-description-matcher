@@ -452,8 +452,8 @@ else:
             
 
         # ---------------- UI CARD ----------------
-
-        st.markdown(
+                st.write("Current role:", role)
+                st.markdown(
             f"""
             <div class='glow-card'>
             <h3 style='color:#818cf8;'>
@@ -482,10 +482,10 @@ else:
         )
 
         # ---------------- REPORT CONTENT ----------------
-        clean_improvement = re.sub(r"\*+", "", improvement)
-        clean_improvement = re.sub(r"#+", "", clean_improvement)
+                clean_improvement = re.sub(r"\*+", "", improvement)
+                clean_improvement = re.sub(r"#+", "", clean_improvement)
 
-        full_report_content += (
+                full_report_content += (
             f"ROLE: {role}\n"
             f"MATCH SCORE: {score:.1f}%\n\n"
             f"MATCHED SKILLS:\n"
