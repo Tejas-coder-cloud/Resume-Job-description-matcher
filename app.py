@@ -500,7 +500,7 @@ else:
 
     # ================= DOWNLOAD BUTTON =================
 
-        st.download_button(
+                st.download_button(
         label="📥 Download Full Analysis Report",
         data=full_report_content,
         file_name=f"Resume_Report_{raw_lang_code}.txt",
