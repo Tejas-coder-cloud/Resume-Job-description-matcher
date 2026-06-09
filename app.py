@@ -439,7 +439,7 @@ else:
                         matched.append(skill)
                     else:
                         missing.append(skill)
-        score = (
+                score = (
             len(matched)
             / len(skills_list)
             * 100
