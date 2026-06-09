@@ -435,10 +435,10 @@ else:
                 resume_embeddings
             )[0]
                     max_similarity = similarities.max().item()
-                if max_similarity >= 0.35:
-                    matched.append(skill)
-                else:
-                    missing.append(skill)
+                    if max_similarity >= 0.35:
+                        matched.append(skill)
+                    else:
+                        missing.append(skill)
         score = (
             len(matched)
             / len(skills_list)
