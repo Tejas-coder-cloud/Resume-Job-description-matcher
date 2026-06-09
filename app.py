@@ -499,12 +499,15 @@ else:
             """,
             unsafe_allow_html=True
         )
+        
 
         # ---------------- REPORT CONTENT ----------------
-                clean_improvement = re.sub(r"\*+", "", improvement)
-                clean_improvement = re.sub(r"#+", "", clean_improvement)
+            if not improvement:
+                improvement="No recommendations available"
+            clean_improvement = re.sub(r"\*+", "", improvement)
+            clean_improvement = re.sub(r"#+", "", clean_improvement)
 
-                full_report_content += (
+            full_report_content += (
             f"ROLE: {role}\n"
             f"MATCH SCORE: {score:.1f}%\n\n"
             f"MATCHED SKILLS:\n"
